@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.13;
+
+import "forge-std/Script.sol";
+import "../src/core/AuctionHouse.sol";
+import "../src/perp/PerpEngine.sol";
+import "../src/perp/PerpVault.sol";
+import "../src/perp/PerpRisk.sol";
+import "../src/perp/OracleAdapter.sol";
+import "../src/spot/SpotSettlement.sol";
+import "../src/spot/SpotVault.sol";
+import "../src/spot/FeeModel.sol";
+import "../test/mocks/MockERC20.sol";
+import "../src/mocks/DummyOracle.sol";
+
+/// @notice Mock USDC for testing
+contract MockUSDC {
+    string public constant name = "USD Coin";
+    string public constant symbol = "USDC";
+    uint8 public constant decimals = 6;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+        totalSupply += amount;
+        emit Transfer(address(0), to, amount);
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (msg.sender != from) {
+            allowance[from][msg.sender] -= amount;
+        }
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
+        return true;
+    }
+}
+
+contract DeployScript is Script {
+    function run() external {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(deployerPrivateKey);
+
+        // Deploy mock USDC
+        MockUSDC usdc = new MockUSDC();
+        console.log("MockUSDC deployed at:", address(usdc));
+
+        // Deploy PerpVault first (needed by PerpEngine)
+        PerpVault perpVault = new PerpVault(address(usdc));
+        console.log("PerpVault deployed at:", address(perpVault));
+
+        // Deploy PerpEngine
+        PerpEngine perpEngine = new PerpEngine(address(perpVault));
+        console.log("PerpEngine deployed at:", address(perpEngine));
+
+        // Deploy SpotSettlement
+        SpotSettlement spotSettlement = new SpotSettlement();
+        console.log("SpotSettlement deployed at:", address(spotSettlement));
+
+        // Deploy AuctionHouse
+        AuctionHouse auctionHouse = new AuctionHouse(
+            address(usdc),
+            address(perpEngine),
+            address(spotSettlement)
+        );
+        console.log("AuctionHouse deployed at:", address(auctionHouse));
+
+        // Set AuctionHouse in PerpEngine
+        perpEngine.setAuctionHouse(address(auctionHouse));
+        console.log("AuctionHouse set in PerpEngine");
+
+        // Set PerpEngine in PerpVault
+        perpVault.setPerpEngine(address(perpEngine));
+        console.log("PerpEngine set in PerpVault");
+
+        // Mint some USDC to deployer for testing (1M USDC)
+        usdc.mint(msg.sender, 1_000_000 * 1e6);
+        console.log("Minted 1M USDC to deployer:", msg.sender);
+
+        vm.stopBroadcast();
+
+        console.log("\n=== Deployment Summary ===");
+        console.log("USDC:", address(usdc));
+        console.log("AuctionHouse:", address(auctionHouse));
+        console.log("PerpEngine:", address(perpEngine));
+        console.log("PerpVault:", address(perpVault));
+        console.log("SpotSettlement:", address(spotSettlement));
+    }
+}
