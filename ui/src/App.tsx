@@ -3,10 +3,14 @@ import { useAccount, useDisconnect, useChainId } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import type { Address } from 'viem';
 import {
-  useAuctionId,
-  useClearing,
-  useSubmitOrder,
-  useFinalizeAuction,
+  useBatchId,
+  useBatchEnd,
+  useBatchDuration,
+  useSubmitSpotOrder,
+  useFinalizeBatch,
+  useCancelOrder,
+  useOrder,
+  useOrderFilledQty,
   useAvailableMargin,
   useTokenBalance,
   useApproveToken,
@@ -34,8 +38,12 @@ export default function App() {
   // Market state
   const MARKET_ID = 1n; // ETH/USDC spot market
   const [market, setMarket] = useState("ETH/USDC");
-  const [mode, setMode] = useState<"taker" | "maker">("taker");
-  const [side, setSide] = useState<"buy" | "sell">("buy");
+  
+  // DFBA Order Type: 4 combinations
+  // Maker-Buy (MB) + Taker-Sell (TS) = BID AUCTION
+  // Maker-Sell (MS) + Taker-Buy (TB) = ASK AUCTION
+  const [orderType, setOrderType] = useState<"MB" | "MS" | "TB" | "TS">("TB");
+  
   const [size, setSize] = useState("0.50");
   const [limit, setLimit] = useState("2450");
   const [slippageBps, setSlippageBps] = useState(30);
@@ -43,32 +51,34 @@ export default function App() {
   const [reduceOnly, setReduceOnly] = useState(false);
 
   // Contract hooks
-  const { data: currentAuctionId, refetch: refetchAuctionId } = useAuctionId(MARKET_ID);
-  const { data: clearingData } = useClearing(MARKET_ID, currentAuctionId ?? 0n);
-  const { data: marginBalance } = useAvailableMargin(address, contracts.USDC as Address);
+  const { data: currentBatchId, refetch: refetchBatchId } = useBatchId(MARKET_ID);
+  const { data: batchEnd } = useBatchEnd(MARKET_ID);
+  const { data: batchDuration } = useBatchDuration();
+  const { data: marginBalance } = useAvailableMargin(address, contracts.USDC as Address, 0n);
   const { data: usdcBalance } = useTokenBalance(address, contracts.USDC as Address);
-  const { data: allowance } = useTokenAllowance(address, contracts.USDC as Address, contracts.AUCTION_HOUSE as Address);
+  const { data: allowanceSpotRouter } = useTokenAllowance(address, contracts.USDC as Address, contracts.SPOT_ROUTER as Address);
+  const { data: allowanceCoreVault } = useTokenAllowance(address, contracts.USDC as Address, contracts.CORE_VAULT as Address);
   
-  const { submitOrder, isPending: isSubmitting, isSuccess: orderSuccess, hash: orderHash } = useSubmitOrder();
-  const { finalizeAuction, isPending: isFinalizing, isSuccess: finalizeSuccess } = useFinalizeAuction();
+  const { submitOrder, isPending: isSubmitting, isSuccess: orderSuccess, hash: orderHash } = useSubmitSpotOrder();
+  const { finalizeBatch, isPending: isFinalizing, isSuccess: finalizeSuccess } = useFinalizeBatch();
   const { approve, isPending: isApproving, isSuccess: approveSuccess } = useApproveToken();
 
-  // Auction clock (use real auction ID when available)
-  const intervalMs = 1000;
+  // Batch clock (use real batch ID when available)
+  const batchDurationMs = batchDuration ? Number(batchDuration) * 1000 : 1000; // Default 1 second
   const [now, setNow] = useState(() => Date.now());
   
   useEffect(() => {
     const t = setInterval(() => {
       setNow(Date.now());
-      refetchAuctionId();
+      refetchBatchId();
     }, 100);
     return () => clearInterval(t);
-  }, [refetchAuctionId]);
+  }, [refetchBatchId]);
 
-  const auctionId = currentAuctionId ? Number(currentAuctionId) : Math.floor(now / intervalMs);
-  const msInto = now % intervalMs;
-  const msLeft = intervalMs - msInto;
-  const progress = msInto / intervalMs;
+  const batchId = currentBatchId ? Number(currentBatchId) : Math.floor(now / batchDurationMs);
+  const msInto = batchEnd ? Math.max(0, Number(batchEnd) * 1000 - now) : now % batchDurationMs;
+  const msLeft = batchDurationMs - msInto;
+  const progress = msInto / batchDurationMs;
 
   // Pricing (mock - replace with oracle/indexer data)
   const last = 2448.62;
@@ -85,31 +95,65 @@ export default function App() {
     return parsedSize * px;
   }, [parsedSize, parsedLimit, last]);
 
-  const feeBps = mode === "maker" ? 2 : 6;
+  // Maker orders provide liquidity (lower fee), Taker orders take liquidity (higher fee)
+  const feeBps = (orderType === "MB" || orderType === "MS") ? 2 : 6;
   const fee = useMemo(() => (notional * feeBps) / 10_000, [notional, feeBps]);
 
   const limitFromSlippage = useMemo(() => {
     const bps = slippageBps;
-    if (side === "buy") return (last * (1 + bps / 10_000)).toFixed(2);
-    return (last * (1 - bps / 10_000)).toFixed(2);
-  }, [side, last, slippageBps]);
+    // MB/TB = buying (willing to pay more), MS/TS = selling (willing to accept less)
+    if (orderType === "MB" || orderType === "TB") {
+      return (last * (1 + bps / 10_000)).toFixed(2); // Max buy price
+    }
+    return (last * (1 - bps / 10_000)).toFixed(2); // Min sell price
+  }, [orderType, last, slippageBps]);
 
   const preview = useMemo(() => {
     const lim = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : Number(limitFromSlippage);
-    const inMoney = side === "buy" ? lim >= estHigh : lim <= estLow;
-    const atMargin = side === "buy" ? lim >= estLow && lim < estHigh : lim <= estHigh && lim > estLow;
-
-    let fillText = "Unlikely to fill";
-    if (inMoney) fillText = "Likely fills in next auction";
-    else if (atMargin) fillText = "May fill (pro-rata at marginal tick)";
+    
+    // For BID AUCTION (MB/TS): higher bids fill first
+    // For ASK AUCTION (MS/TB): lower asks fill first
+    let inMoney = false;
+    let atMargin = false;
+    let fillText = "";
+    let auctionType = "";
+    
+    if (orderType === "MB") {
+      // Maker-Buy in bid auction: fills if bid >= clearing
+      auctionType = "BID AUCTION";
+      inMoney = lim >= estHigh;
+      atMargin = lim >= estLow && lim < estHigh;
+      fillText = inMoney ? "Likely fills (bid above expected clearing)" 
+        : atMargin ? "May fill pro-rata at marginal tick" 
+        : "Below expected clearing - unlikely to fill";
+    } else if (orderType === "TS") {
+      // Taker-Sell in bid auction: always fills at clearing price
+      auctionType = "BID AUCTION";
+      inMoney = true;
+      fillText = "Fills at bid clearing price (market sell)";
+    } else if (orderType === "MS") {
+      // Maker-Sell in ask auction: fills if ask <= clearing
+      auctionType = "ASK AUCTION";
+      inMoney = lim <= estLow;
+      atMargin = lim <= estHigh && lim > estLow;
+      fillText = inMoney ? "Likely fills (ask below expected clearing)" 
+        : atMargin ? "May fill pro-rata at marginal tick" 
+        : "Above expected clearing - unlikely to fill";
+    } else { // TB
+      // Taker-Buy in ask auction: always fills at clearing price
+      auctionType = "ASK AUCTION";
+      inMoney = true;
+      fillText = "Fills at ask clearing price (market buy)";
+    }
 
     return {
       inMoney,
       atMargin,
       fillText,
+      auctionType,
       estPriceBand: `${estLow.toFixed(2)} – ${estHigh.toFixed(2)}`,
     };
-  }, [parsedLimit, side, estLow, estHigh, limitFromSlippage]);
+  }, [parsedLimit, orderType, estLow, estHigh, limitFromSlippage]);
 
   // Mock batch book data
   const levels = useMemo(() => [
@@ -128,22 +172,24 @@ export default function App() {
     return tb - ts;
   }, [levels]);
 
-  // Handle approve USDC
+  // Handle approve USDC for both SpotRouter and CoreVault
   const handleApprove = () => {
     if (!address) return;
     const maxApproval = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-    approve(contracts.USDC as Address, contracts.AUCTION_HOUSE as Address, maxApproval);
+    // Approve SpotRouter for order submission
+    approve(contracts.USDC as Address, contracts.SPOT_ROUTER as Address, maxApproval);
+    // Note: Also need to approve CoreVault for margin deposits if doing perp trading
   };
 
   // Handle place order
   const handlePlaceOrder = () => {
-    if (!address || !currentAuctionId) {
-      alert("Please connect wallet and wait for auction data");
+    if (!address || !currentBatchId) {
+      alert("Please connect wallet and wait for batch data");
       return;
     }
 
-    if (!allowance || allowance === 0n) {
-      alert("Please approve USDC spending first");
+    if (!allowanceSpotRouter || allowanceSpotRouter === 0n) {
+      alert("Please approve USDC spending for SpotRouter first");
       return;
     }
 
@@ -151,12 +197,29 @@ export default function App() {
     const qtyWei = parseWei(size, 18);
     const nonceValue = BigInt(Date.now());
 
+    // Map UI order type to contract Side/Flow
+    let side: typeof Side.Buy | typeof Side.Sell;
+    let flow: typeof Flow.Maker | typeof Flow.Taker;
+    
+    if (orderType === "MB") {
+      side = Side.Buy;
+      flow = Flow.Maker;
+    } else if (orderType === "MS") {
+      side = Side.Sell;
+      flow = Flow.Maker;
+    } else if (orderType === "TB") {
+      side = Side.Buy;
+      flow = Flow.Taker;
+    } else { // TS
+      side = Side.Sell;
+      flow = Flow.Taker;
+    }
+
     const order: Order = {
       trader: address,
       marketId: MARKET_ID,
-      auctionId: currentAuctionId,
-      side: side === "buy" ? Side.Buy : Side.Sell,
-      flow: mode === "maker" ? Flow.Maker : Flow.Taker,
+      side,
+      flow,
       priceTick: priceTickValue,
       qty: qtyWei,
       nonce: nonceValue,
@@ -168,10 +231,10 @@ export default function App() {
 
   // Handle finalize
   const handleFinalize = () => {
-    if (!currentAuctionId) return;
-    // Finalize previous auction
-    const auctionToFinalize = currentAuctionId > 1n ? currentAuctionId - 1n : currentAuctionId;
-    finalizeAuction(MARKET_ID, auctionToFinalize);
+    if (!currentBatchId) return;
+    // Finalize previous batch
+    const batchToFinalize = currentBatchId > 1n ? currentBatchId - 1n : currentBatchId;
+    finalizeBatch(MARKET_ID, batchToFinalize, BigInt(100));
   };
 
   return (
@@ -224,13 +287,13 @@ export default function App() {
                   {marginBalance ? formatWei(marginBalance, 6) : '0.00'}
                 </span>
               </div>
-              {(!allowance || allowance === 0n) && (
+              {(!allowanceSpotRouter || allowanceSpotRouter === 0n) && (
                 <button
                   onClick={handleApprove}
                   disabled={isApproving}
                   className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
                 >
-                  {isApproving ? 'Approving...' : 'Approve USDC'}
+                  {isApproving ? 'Approving...' : 'Approve USDC (SpotRouter)'}
                 </button>
               )}
             </div>
@@ -257,11 +320,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Auction clock */}
+              {/* Batch clock */}
               <div className="w-44 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-zinc-400">Auction</div>
-                  <div className="text-xs text-zinc-400">#{auctionId}</div>
+                  <div className="text-xs text-zinc-400">Batch</div>
+                  <div className="text-xs text-zinc-400">#{batchId}</div>
                 </div>
                 <div className="mt-1 text-sm font-semibold">
                   Clears in {(msLeft / 1000).toFixed(2)}s
@@ -290,10 +353,10 @@ export default function App() {
               </div>
             </div>
 
-            {/* Auction history */}
+            {/* Batch history */}
             <div className="mt-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">Recent auctions</div>
+                <div className="text-sm font-semibold">Recent batches</div>
                 <button className="text-xs text-zinc-400 hover:text-zinc-200">
                   View all
                 </button>
@@ -306,7 +369,7 @@ export default function App() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-xs text-zinc-400">
-                        Auction #{auctionId - (i + 1)}
+                        Batch #{batchId - (i + 1)}
                       </div>
                       <div className="text-xs text-zinc-400">
                         Vol ${(120 + i * 35).toFixed(0)}k
@@ -331,7 +394,7 @@ export default function App() {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Trade</div>
-              <div className="text-xs text-zinc-400">Batch #{auctionId}</div>
+              <div className="text-xs text-zinc-400">Batch #{batchId}</div>
             </div>
 
             {!isConnected && (
@@ -340,52 +403,59 @@ export default function App() {
               </div>
             )}
 
-            {/* Maker/Taker toggle */}
-            <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/30 p-1">
-              <button
-                onClick={() => setMode("taker")}
-                className={
-                  mode === "taker"
-                    ? "rounded-xl bg-zinc-900 px-3 py-2 text-sm font-semibold"
-                    : "rounded-xl px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900/40"
-                }
-              >
-                Taker (Trade)
-              </button>
-              <button
-                onClick={() => setMode("maker")}
-                className={
-                  mode === "maker"
-                    ? "rounded-xl bg-zinc-900 px-3 py-2 text-sm font-semibold"
-                    : "rounded-xl px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900/40"
-                }
-              >
-                Maker (Provide)
-              </button>
-            </div>
-
-            {/* Buy/Sell */}
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setSide("buy")}
-                className={
-                  side === "buy"
-                    ? "rounded-2xl bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30 px-3 py-2 text-sm font-semibold"
-                    : "rounded-2xl border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-sm hover:bg-zinc-900/40"
-                }
-              >
-                Buy
-              </button>
-              <button
-                onClick={() => setSide("sell")}
-                className={
-                  side === "sell"
-                    ? "rounded-2xl bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30 px-3 py-2 text-sm font-semibold"
-                    : "rounded-2xl border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-sm hover:bg-zinc-900/40"
-                }
-              >
-                Sell
-              </button>
+            {/* DFBA Order Type Selector */}
+            <div className="mt-3 space-y-2">
+              <div className="text-xs text-zinc-400 font-semibold">Order Type</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setOrderType("TB")}
+                  className={
+                    orderType === "TB"
+                      ? "rounded-2xl bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30 p-3 text-left"
+                      : "rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3 text-left hover:bg-zinc-900/40"
+                  }
+                >
+                  <div className="text-sm font-semibold">Taker-Buy</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">Market buy at ask clearing</div>
+                </button>
+                <button
+                  onClick={() => setOrderType("TS")}
+                  className={
+                    orderType === "TS"
+                      ? "rounded-2xl bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/30 p-3 text-left"
+                      : "rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3 text-left hover:bg-zinc-900/40"
+                  }
+                >
+                  <div className="text-sm font-semibold">Taker-Sell</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">Market sell at bid clearing</div>
+                </button>
+                <button
+                  onClick={() => setOrderType("MB")}
+                  className={
+                    orderType === "MB"
+                      ? "rounded-2xl bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30 p-3 text-left"
+                      : "rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3 text-left hover:bg-zinc-900/40"
+                  }
+                >
+                  <div className="text-sm font-semibold">Maker-Buy</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">Limit bid (provide liquidity)</div>
+                </button>
+                <button
+                  onClick={() => setOrderType("MS")}
+                  className={
+                    orderType === "MS"
+                      ? "rounded-2xl bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30 p-3 text-left"
+                      : "rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3 text-left hover:bg-zinc-900/40"
+                  }
+                >
+                  <div className="text-sm font-semibold">Maker-Sell</div>
+                  <div className="text-[11px] text-zinc-400 mt-0.5">Limit ask (provide liquidity)</div>
+                </button>
+              </div>
+              <div className="text-[11px] text-zinc-500 bg-zinc-950/50 rounded-xl p-2 border border-zinc-800">
+                <span className="font-semibold">BID AUCTION:</span> Maker-Buy + Taker-Sell<br/>
+                <span className="font-semibold">ASK AUCTION:</span> Maker-Sell + Taker-Buy
+              </div>
             </div>
 
             {/* Inputs */}
@@ -442,13 +512,13 @@ export default function App() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
-                <div>
-                  <div className="text-xs text-zinc-400">Preview</div>
+                <div className="flex-1">
+                  <div className="text-xs text-zinc-400">Auction: <span className="font-semibold text-zinc-200">{preview.auctionType}</span></div>
                   <div className="mt-1 text-sm font-semibold">
                     {preview.fillText}
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-400">
-                    Est. clearing band: {preview.estPriceBand}
+                    Est. clearing: {preview.estPriceBand}
                   </div>
                 </div>
                 <div className="text-right">
@@ -457,7 +527,7 @@ export default function App() {
                     {fee.toFixed(4)} USDC
                   </div>
                   <div className="mt-1 text-[11px] text-zinc-400">
-                    {feeBps} bps ({mode})
+                    {feeBps} bps ({(orderType === "MB" || orderType === "MS") ? "maker" : "taker"})
                   </div>
                 </div>
               </div>
@@ -487,12 +557,13 @@ export default function App() {
                 onClick={handlePlaceOrder}
                 disabled={!isConnected || isSubmitting}
                 className={
-                  side === "buy"
-                    ? "w-full rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
-                    : "w-full rounded-2xl bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 ring-1 ring-rose-500/30 hover:bg-rose-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  orderType === "TB" ? "w-full rounded-2xl bg-emerald-500/20 px-4 py-3 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  : orderType === "TS" ? "w-full rounded-2xl bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 ring-1 ring-rose-500/30 hover:bg-rose-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  : orderType === "MB" ? "w-full rounded-2xl bg-blue-500/20 px-4 py-3 text-sm font-semibold text-blue-100 ring-1 ring-blue-500/30 hover:bg-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  : "w-full rounded-2xl bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-100 ring-1 ring-amber-500/30 hover:bg-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
                 }
               >
-                {isSubmitting ? 'Submitting...' : mode === "maker" ? "Place maker order" : "Place taker order"}
+                {isSubmitting ? 'Submitting...' : `Place ${orderType} Order`}
               </button>
 
               {orderSuccess && orderHash && (
@@ -501,8 +572,9 @@ export default function App() {
                 </div>
               )}
 
-              <div className="text-center text-[11px] text-zinc-500">
-                Orders are collected per auction • clearing is uniform-price • marginal fills can be pro-rata
+              <div className="text-center text-[11px] text-zinc-500 space-y-1">
+                <div>Orders collected per batch → Dual auctions clear at uniform prices</div>
+                <div>Maker orders provide liquidity (2 bps) • Taker orders cross auctions (6 bps)</div>
               </div>
             </div>
           </div>
@@ -513,11 +585,11 @@ export default function App() {
               <div>
                 <div className="text-sm font-semibold">DFBA Batch Book</div>
                 <div className="mt-1 text-xs text-zinc-400">
-                  Aggregated depth by tick (maker vs taker)
+                  Depth by tick for current batch
                 </div>
               </div>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 px-3 py-2 text-xs">
-                <span className="text-zinc-400">Imbalance</span>{" "}
+                <span className="text-zinc-400">TB-TS Imbalance</span>{" "}
                 <span
                   className={
                     imbalance >= 0 ? "text-emerald-200" : "text-rose-200"
@@ -529,13 +601,20 @@ export default function App() {
               </div>
             </div>
 
+            <div className="mt-3 space-y-2">
+              <div className="text-[11px] text-zinc-400 space-y-1 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
+                <div><span className="text-blue-300 font-semibold">BID AUCTION:</span> MB (blue) vs TS (red) → clears at highest bid</div>
+                <div><span className="text-amber-300 font-semibold">ASK AUCTION:</span> MS (amber) vs TB (green) → clears at lowest ask</div>
+              </div>
+            </div>
+
             <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/30">
               <div className="grid grid-cols-5 gap-2 border-b border-zinc-800 px-3 py-2 text-[11px] text-zinc-400">
                 <div>Tick</div>
-                <div className="text-right">Maker Buy</div>
-                <div className="text-right">Maker Sell</div>
-                <div className="text-right">Taker Buy</div>
-                <div className="text-right">Taker Sell</div>
+                <div className="text-right text-blue-300">MB</div>
+                <div className="text-right text-amber-300">MS</div>
+                <div className="text-right text-emerald-300">TB</div>
+                <div className="text-right text-rose-300">TS</div>
               </div>
               <div className="max-h-64 overflow-auto">
                 {levels.map((lvl) => {
@@ -547,20 +626,20 @@ export default function App() {
                       key={lvl.tick}
                       className={
                         "grid grid-cols-5 gap-2 px-3 py-2 text-sm border-b border-zinc-900/60 " +
-                        (isBand ? "bg-emerald-500/5" : "")
+                        (isBand ? "bg-zinc-800/30" : "")
                       }
                     >
                       <div className="font-mono text-zinc-200">{lvl.tick}</div>
-                      <div className="text-right font-mono text-zinc-300">
+                      <div className="text-right font-mono text-blue-300">
                         {lvl.makerBuy}
                       </div>
-                      <div className="text-right font-mono text-zinc-300">
+                      <div className="text-right font-mono text-amber-300">
                         {lvl.makerSell}
                       </div>
-                      <div className="text-right font-mono text-zinc-300">
+                      <div className="text-right font-mono text-emerald-300">
                         {lvl.takerBuy}
                       </div>
-                      <div className="text-right font-mono text-zinc-300">
+                      <div className="text-right font-mono text-rose-300">
                         {lvl.takerSell}
                       </div>
                     </div>
@@ -571,30 +650,40 @@ export default function App() {
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
-                <div className="text-xs text-zinc-400">Projected clearing</div>
-                <div className="mt-1 text-sm font-semibold">
-                  {estLow.toFixed(2)} – {estHigh.toFixed(2)}
+                <div className="text-xs text-zinc-400">Bid clearing (MB vs TS)</div>
+                <div className="mt-1 text-sm font-semibold text-blue-200">
+                  ~{estHigh.toFixed(2)}
                 </div>
                 <div className="mt-1 text-[11px] text-zinc-400">
-                  Band highlights marginal area
+                  Highest bid that clears
                 </div>
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
-                <div className="text-xs text-zinc-400">Finalize auction</div>
-                <div className="mt-1 text-[11px] text-zinc-400">
-                  Call on-chain → users claim fills
+                <div className="text-xs text-zinc-400">Ask clearing (MS vs TB)</div>
+                <div className="mt-1 text-sm font-semibold text-amber-200">
+                  ~{estLow.toFixed(2)}
                 </div>
-                <button
-                  onClick={handleFinalize}
-                  disabled={!isConnected || isFinalizing}
-                  className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isFinalizing ? 'Finalizing...' : 'Finalize'}
-                </button>
-                {finalizeSuccess && (
-                  <div className="mt-2 text-[11px] text-emerald-200">✓ Finalized</div>
-                )}
+                <div className="mt-1 text-[11px] text-zinc-400">
+                  Lowest ask that clears
+                </div>
               </div>
+            </div>
+            
+            <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
+              <div className="text-xs text-zinc-400">Finalize batch</div>
+              <div className="mt-1 text-[11px] text-zinc-400">
+                Run dual auctions → compute clearing prices → users claim fills
+              </div>
+              <button
+                onClick={handleFinalize}
+                disabled={!isConnected || isFinalizing}
+                className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isFinalizing ? 'Finalizing...' : 'Finalize Batch'}
+              </button>
+              {finalizeSuccess && (
+                <div className="mt-2 text-[11px] text-emerald-200">✓ Batch finalized</div>
+              )}
             </div>
           </div>
         </section>
@@ -605,13 +694,18 @@ export default function App() {
           <div className="font-semibold text-zinc-300">Contract Integration Status</div>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>✅ Wagmi v2 with proper type safety</li>
-            <li>✅ Real-time auction ID from on-chain</li>
-            <li>✅ Submit orders with proper ABI encoding</li>
-            <li>✅ Approve & deposit margin flows</li>
+            <li>✅ Real-time batch ID from on-chain</li>
+            <li>✅ Submit orders via SpotRouter (proper user flow)</li>
+            <li>✅ Approve & deposit margin flows through CoreVault</li>
             <li>✅ Finalize auction on-chain</li>
+            <li>✅ Order struct matches contract (no batchId in input)</li>
             <li>⚠️ Batch book: Query from indexer or aggregate on-chain events</li>
-            <li>⚠️ Clearing price: Parse clearing results from contract</li>
+            <li>⚠️ Clearing price: Parse clearing results from finalizeStates</li>
+            <li>⚠️ Price-to-tick conversion: Currently 1:1, implement log if needed</li>
           </ul>
+          <div className="mt-3 text-[11px] text-zinc-400">
+            Note: For Perp trading, use PERP_ROUTER and ensure CORE_VAULT allowance + IM reserves
+          </div>
         </div>
       </footer>
     </div>

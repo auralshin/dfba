@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Math} from "../libraries/Math.sol";
+import {DFBAMath} from "../libraries/Math.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {OracleAdapter} from "./OracleAdapter.sol";
 
 /// @title PerpRisk
@@ -73,8 +75,8 @@ contract PerpRisk {
 
     function setRiskParams(uint64 marketId, RiskParams calldata params) external onlyAdmin {
         require(params.initialMarginBps >= params.maintenanceMarginBps, "PerpRisk: IM < MM");
-        require(params.initialMarginBps <= Math.BPS, "PerpRisk: invalid IM");
-        require(params.maintenanceMarginBps <= Math.BPS, "PerpRisk: invalid MM");
+        require(params.initialMarginBps <= DFBAMath.BPS, "PerpRisk: invalid IM");
+        require(params.maintenanceMarginBps <= DFBAMath.BPS, "PerpRisk: invalid MM");
 
         marketRiskParams[marketId] = params;
         emit RiskParamsUpdated(marketId, params);
@@ -95,8 +97,8 @@ contract PerpRisk {
         returns (uint256)
     {
         RiskParams storage params = marketRiskParams[marketId];
-        uint256 notional = Math.notional(size, price);
-        return Math.applyBps(notional, params.initialMarginBps);
+        uint256 notional = DFBAMath.notional(size, price);
+        return DFBAMath.applyBps(notional, params.initialMarginBps);
     }
 
     /// @notice Calculate maintenance margin required for a position
@@ -110,8 +112,8 @@ contract PerpRisk {
         returns (uint256)
     {
         RiskParams storage params = marketRiskParams[marketId];
-        uint256 notional = Math.notional(size, markPrice);
-        return Math.applyBps(notional, params.maintenanceMarginBps);
+        uint256 notional = DFBAMath.notional(size, markPrice);
+        return DFBAMath.applyBps(notional, params.maintenanceMarginBps);
     }
 
     /// @notice Calculate unrealized PnL for a position
@@ -125,9 +127,9 @@ contract PerpRisk {
     {
         if (position.size == 0) return 0;
 
-        uint128 absSize = uint128(Math.abs(position.size));
-        uint256 currentValue = Math.notional(absSize, markPrice);
-        uint256 entryValue = Math.notional(absSize, position.entryPrice);
+        uint128 absSize = SafeCast.toUint128(SignedMath.abs(position.size));
+        uint256 currentValue = DFBAMath.notional(absSize, markPrice);
+        uint256 entryValue = DFBAMath.notional(absSize, position.entryPrice);
 
         if (position.size > 0) {
 
@@ -159,7 +161,7 @@ contract PerpRisk {
         if (totalMargin <= 0) return true;
 
 
-        uint128 absSize = uint128(Math.abs(position.size));
+        uint128 absSize = SafeCast.toUint128(SignedMath.abs(position.size));
         uint256 mmRequired = this.maintenanceMarginRequired(marketId, absSize, markPrice);
 
         return uint256(totalMargin) < mmRequired;
@@ -176,8 +178,8 @@ contract PerpRisk {
         returns (uint256)
     {
         RiskParams storage params = marketRiskParams[marketId];
-        uint256 notional = Math.notional(positionSize, markPrice);
-        return Math.applyBps(notional, params.liquidationFeeBps);
+        uint256 notional = DFBAMath.notional(positionSize, markPrice);
+        return DFBAMath.applyBps(notional, params.liquidationFeeBps);
     }
 
     /// @notice Validate a new order doesn't exceed max position size
@@ -192,7 +194,7 @@ contract PerpRisk {
     {
         RiskParams storage params = marketRiskParams[marketId];
         int128 newSize = currentSize + orderSize;
-        return Math.abs(newSize) <= params.maxPositionSize;
+        return SignedMath.abs(newSize) <= params.maxPositionSize;
     }
 
     /// @notice Calculate maximum order size given available margin
@@ -211,15 +213,15 @@ contract PerpRisk {
         require(params.initialMarginBps > 0, "PerpRisk: invalid IM");
         require(price > 0, "PerpRisk: invalid price");
 
-        uint256 maxNotional = (availableMargin * Math.BPS) / params.initialMarginBps;
-        uint256 size = (maxNotional * Math.WAD) / price;
+        uint256 maxNotional = (availableMargin * DFBAMath.BPS) / params.initialMarginBps;
+        uint256 size = (maxNotional * DFBAMath.WAD) / price;
         
 
         if (size > params.maxPositionSize) {
             size = params.maxPositionSize;
         }
 
-        return Math.toUint128(size);
+        return SafeCast.toUint128(size);
     }
 
     /*//////////////////////////////////////////////////////////////

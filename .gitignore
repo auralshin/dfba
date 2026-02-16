@@ -12,3 +12,43 @@ docs/
 
 # Dotenv file
 .env
+
+# Dependencies
+/*/node_modules/
+/node_modules/
+**/node_modules/
+
+# Coverage
+coverage/
+coverage.json
+lcov.info
+*.lcov
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+test-failures
+fuzz/failures
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

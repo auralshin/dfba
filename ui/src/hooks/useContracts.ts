@@ -1,5 +1,14 @@
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
-import { AUCTION_HOUSE_ABI, PERP_ENGINE_ABI, PERP_VAULT_ABI, SPOT_SETTLEMENT_ABI, ERC20_ABI } from '../config/abis'
+import { 
+  AUCTION_HOUSE_ABI, 
+  PERP_ENGINE_ABI, 
+  PERP_VAULT_ABI, 
+  SPOT_SETTLEMENT_ABI, 
+  ERC20_ABI,
+  SPOT_ROUTER_ABI,
+  PERP_ROUTER_ABI,
+  CORE_VAULT_ABI
+} from '../config/abis'
 import { getContracts } from '../config/contracts'
 import { useCallback, useMemo } from 'react'
 import type { Address } from 'viem'
@@ -22,7 +31,6 @@ export type Flow = typeof Flow[keyof typeof Flow]
 export type Order = {
   trader: Address
   marketId: bigint
-  auctionId: bigint
   side: Side
   flow: Flow
   priceTick: number
@@ -32,40 +40,121 @@ export type Order = {
 }
 
 /**
- * Hook to get current auction ID for a market
+ * Hook to get current batch ID for a market
  */
-export function useAuctionId(marketId: bigint) {
+export function useBatchId(marketId: bigint) {
   const { chain } = useAccount()
   const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
 
   return useReadContract({
     address: contracts.AUCTION_HOUSE as Address,
     abi: AUCTION_HOUSE_ABI,
-    functionName: 'getAuctionId',
+    functionName: 'getBatchId',
     args: [marketId],
     query: {
-      refetchInterval: 1000, // Refresh every second for auction updates
+      refetchInterval: 1000, // Refresh every second for batch updates
     },
   })
 }
 
 /**
- * Hook to get clearing results for an auction
+ * Hook to get batch end time for a market
  */
-export function useClearing(marketId: bigint, auctionId: bigint) {
+export function useBatchEnd(marketId: bigint) {
   const { chain } = useAccount()
   const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
 
   return useReadContract({
     address: contracts.AUCTION_HOUSE as Address,
     abi: AUCTION_HOUSE_ABI,
-    functionName: 'getClearing',
-    args: [marketId, auctionId],
+    functionName: 'getBatchEnd',
+    args: [marketId],
   })
 }
 
 /**
- * Hook to submit an order to the auction house
+ * Hook to get batch duration constant
+ */
+export function useBatchDuration() {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+
+  return useReadContract({
+    address: contracts.AUCTION_HOUSE as Address,
+    abi: AUCTION_HOUSE_ABI,
+    functionName: 'BATCH_DURATION',
+  })
+}
+
+/**
+ * Hook to submit a spot order via SpotRouter (proper way for users)
+ */
+export function useSubmitSpotOrder() {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+  
+  const { data: hash, writeContract, isPending, error } = useWriteContract()
+  
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const submitOrder = useCallback(
+    (order: Order) => {
+      writeContract({
+        address: contracts.SPOT_ROUTER as Address,
+        abi: SPOT_ROUTER_ABI,
+        functionName: 'submitOrder',
+        args: [order],
+      })
+    },
+    [writeContract, contracts]
+  )
+
+  return {
+    submitOrder,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+  }
+}
+
+/**
+ * Hook to submit a perp order via PerpRouter (proper way for users)
+ */
+export function useSubmitPerpOrder() {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+  
+  const { data: hash, writeContract, isPending, error } = useWriteContract()
+  
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const submitOrder = useCallback(
+    (order: Order, collateral: Address) => {
+      writeContract({
+        address: contracts.PERP_ROUTER as Address,
+        abi: PERP_ROUTER_ABI,
+        functionName: 'submitOrder',
+        args: [order, collateral],
+      })
+    },
+    [writeContract, contracts]
+  )
+
+  return {
+    submitOrder,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+  }
+}
+
+/**
+ * Hook to submit an order directly to AuctionHouse (only for routers with ROUTER_ROLE)
+ * Normal users should use useSubmitSpotOrder or useSubmitPerpOrder instead
  */
 export function useSubmitOrder() {
   const { chain } = useAccount()
@@ -98,29 +187,29 @@ export function useSubmitOrder() {
 }
 
 /**
- * Hook to finalize an auction
+ * Hook to finalize a batch (incremental processing)
  */
-export function useFinalizeAuction() {
+export function useFinalizeBatch() {
   const { chain } = useAccount()
   const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
   
   const { data: hash, writeContract, isPending, error } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const finalizeAuction = useCallback(
-    (marketId: bigint, auctionId: bigint) => {
+  const finalizeBatch = useCallback(
+    (marketId: bigint, batchId: bigint, maxSteps: bigint = BigInt(100)) => {
       writeContract({
         address: contracts.AUCTION_HOUSE as Address,
         abi: AUCTION_HOUSE_ABI,
-        functionName: 'finalizeAuction',
-        args: [marketId, auctionId],
+        functionName: 'finalizeStep',
+        args: [marketId, batchId, maxSteps],
       })
     },
     [writeContract, contracts]
   )
 
   return {
-    finalizeAuction,
+    finalizeBatch,
     hash,
     isPending,
     isConfirming,
@@ -130,7 +219,89 @@ export function useFinalizeAuction() {
 }
 
 /**
- * Hook to deposit margin for perp trading
+ * Hook to cancel an order
+ */
+export function useCancelOrder() {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+  
+  const { data: hash, writeContract, isPending, error } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  const cancelOrder = useCallback(
+    (orderId: `0x${string}`) => {
+      writeContract({
+        address: contracts.AUCTION_HOUSE as Address,
+        abi: AUCTION_HOUSE_ABI,
+        functionName: 'cancelOrder',
+        args: [orderId],
+      })
+    },
+    [writeContract, contracts]
+  )
+
+  return {
+    cancelOrder,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+  }
+}
+
+/**
+ * Hook to get order details
+ */
+export function useOrder(orderId: `0x${string}` | undefined) {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+
+  return useReadContract({
+    address: contracts.AUCTION_HOUSE as Address,
+    abi: AUCTION_HOUSE_ABI,
+    functionName: 'orders',
+    args: orderId ? [orderId] : undefined,
+    query: {
+      enabled: !!orderId,
+    },
+  })
+}
+
+/**
+ * Hook to get order state (to calculate filled qty)
+ */
+export function useOrderState(orderId: `0x${string}` | undefined) {
+  const { chain } = useAccount()
+  const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
+
+  return useReadContract({
+    address: contracts.AUCTION_HOUSE as Address,
+    abi: AUCTION_HOUSE_ABI,
+    functionName: 'orderStates',
+    args: orderId ? [orderId] : undefined,
+    query: {
+      enabled: !!orderId,
+    },
+  })
+}
+
+/**
+ * Hook to get order filled quantity (calculated from order and orderState)
+ */
+export function useOrderFilledQty(orderId: `0x${string}` | undefined) {
+  const { data: order } = useOrder(orderId)
+  const { data: state } = useOrderState(orderId)
+  
+  if (!order || !state) return { data: undefined }
+  
+  // FilledQty = originalQty - remainingQty
+  const filledQty = order[5] - state[0] // qty is at index 5, remainingQty at index 0
+  return { data: filledQty }
+}
+
+/**
+ * Hook to deposit margin to CoreVault
  */
 export function useDepositMargin() {
   const { chain } = useAccount()
@@ -140,12 +311,12 @@ export function useDepositMargin() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
   const depositMargin = useCallback(
-    (token: Address, amount: bigint, to: Address) => {
+    (token: Address, amount: bigint, subaccountId: bigint = 0n) => {
       writeContract({
-        address: contracts.PERP_VAULT as Address,
-        abi: PERP_VAULT_ABI,
-        functionName: 'depositMargin',
-        args: [token, amount, to],
+        address: contracts.CORE_VAULT as Address,
+        abi: CORE_VAULT_ABI,
+        functionName: 'deposit',
+        args: [token, amount, subaccountId],
       })
     },
     [writeContract, contracts]
@@ -162,17 +333,17 @@ export function useDepositMargin() {
 }
 
 /**
- * Hook to get available margin balance
+ * Hook to get available margin balance from CoreVault
  */
-export function useAvailableMargin(user: Address | undefined, token: Address) {
+export function useAvailableMargin(user: Address | undefined, token: Address, subaccountId: bigint = 0n) {
   const { chain } = useAccount()
   const contracts = useMemo(() => getContracts(chain?.id ?? 31337), [chain])
 
   return useReadContract({
-    address: contracts.PERP_VAULT as Address,
-    abi: PERP_VAULT_ABI,
-    functionName: 'getAvailableMargin',
-    args: user ? [user, token] : undefined,
+    address: contracts.CORE_VAULT as Address,
+    abi: CORE_VAULT_ABI,
+    functionName: 'getAvailableBalance',
+    args: user ? [user, token, subaccountId] : undefined,
     query: {
       enabled: !!user,
     },
@@ -322,10 +493,13 @@ export function usePerpPosition(trader: Address | undefined, marketId: bigint) {
 
 /**
  * Helper to convert price to tick
+ * Formula: tick = log₁.₀₀₀₁(price) = ln(price) / ln(1.0001)
+ * For DFBA, we use a 1:1 tick mapping where tick ≈ price for simplicity
+ * TODO: Adjust if you implement actual logarithmic tick spacing
  */
 export function priceToTick(price: number): number {
-  // Tick = log1.0001(price) * 10000
-  // This is a simplified version - adjust based on your tick spacing
+  // Simplified: Using price as tick directly (integer price points)
+  // For proper implementation: Math.floor(Math.log(price) / Math.log(1.0001))
   return Math.floor(price)
 }
 

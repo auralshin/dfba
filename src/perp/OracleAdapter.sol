@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title OracleAdapter
-/// @notice Price oracle interface for perp markets
-/// @dev Provides index price for funding rate calculations and mark price for margin
+import {IOracleSource} from "../interfaces/IOracleSource.sol";
+
 contract OracleAdapter {
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -111,9 +110,4 @@ contract OracleAdapter {
     function isPriceFresh(uint64 marketId) external view returns (bool) {
         return block.timestamp - lastUpdate[marketId] <= STALENESS_THRESHOLD;
     }
-}
-
-/// @notice Simplified oracle source interface
-interface IOracleSource {
-    function getPrice(uint64 marketId) external view returns (uint256);
 }

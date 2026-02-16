@@ -12,7 +12,7 @@ import App from './App.tsx'
 const queryClient = new QueryClient()
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+  // <StrictMode>
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={dfbaTheme}>
@@ -20,5 +20,5 @@ createRoot(document.getElementById('root')!).render(
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
-  </StrictMode>,
+  // </StrictMode>,
 )

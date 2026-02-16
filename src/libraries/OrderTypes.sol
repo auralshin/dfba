@@ -23,10 +23,10 @@ library OrderTypes {
     }
 
     /// @notice Order struct
+    /// @dev batchId is assigned at submission time, not part of Order struct
     struct Order {
         address trader;
         uint64 marketId;
-        uint64 auctionId;
         Side side;
         Flow flow;
         int24 priceTick;
@@ -59,25 +59,37 @@ library OrderTypes {
         uint128 takerSell;
     }
 
-    /// @notice Generate unique order key
-    /// @param order The order
-    /// @return result Unique order ID
-    function orderKey(Order memory order) internal pure returns (bytes32 result) {
-        assembly {
-            let ptr := mload(0x40)
-            let size := 0x120
-            mstore(ptr, mload(add(order, 0x00)))
-            mstore(add(ptr, 0x20), mload(add(order, 0x20)))
-            mstore(add(ptr, 0x40), mload(add(order, 0x40)))
-            mstore(add(ptr, 0x60), mload(add(order, 0x60)))
-            mstore(add(ptr, 0x80), mload(add(order, 0x80)))
-            mstore(add(ptr, 0xa0), mload(add(order, 0xa0)))
-            mstore(add(ptr, 0xc0), mload(add(order, 0xc0)))
-            mstore(add(ptr, 0xe0), mload(add(order, 0xe0)))
-            mstore(add(ptr, 0x100), mload(add(order, 0x100)))
-            result := keccak256(ptr, size)
-        }
+function orderKey(Order memory order) internal pure returns (bytes32 key) {
+    // Pull fields into stack vars so we don't rely on struct memory layout/packing.
+    address trader = order.trader;
+    uint256 marketId = uint256(order.marketId);
+    uint256 side = uint256(uint8(order.side)); // if enum/uint8
+    uint256 flow = uint256(uint8(order.flow)); // if enum/uint8
+    int256 priceTick = int256(order.priceTick); // keep signed if it’s signed
+    uint256 qty = uint256(order.qty);
+    uint256 nonce = uint256(order.nonce);
+    uint256 expiry = uint256(order.expiry);
+
+    assembly {
+        let ptr := mload(0x40)
+
+        // abi.encode(...) places each argument in its own 32-byte word.
+        mstore(ptr, trader)
+        mstore(add(ptr, 0x20), marketId)
+        mstore(add(ptr, 0x40), side)
+        mstore(add(ptr, 0x60), flow)
+        mstore(add(ptr, 0x80), priceTick)
+        mstore(add(ptr, 0xA0), qty)
+        mstore(add(ptr, 0xC0), nonce)
+        mstore(add(ptr, 0xE0), expiry)
+
+        key := keccak256(ptr, 0x100)
+
+        // advance free memory pointer (optional here since it's pure, but good hygiene)
+        mstore(0x40, add(ptr, 0x100))
     }
+}
+
 
     /// @notice Check if order is in the money (would fill at clearing)
     /// @param order The order
@@ -134,12 +146,16 @@ library OrderTypes {
         return uint128(filled);
     }
 
-    /// @notice Convert tick to price (simplified: price = 1.0001^tick)
-    /// @dev For production, use proper fixed-point math
+    /// @notice Convert tick to price using 1.0001^tick formula with WAD precision
+    /// @dev Returns price in WAD (1e18) precision
+    /// @dev For simplicity using approximation: price ≈ 1e18 * (1 + tick/10000) for small ticks
+    /// @dev Production should use proper exponential or lookup table
     function tickToPrice(int24 tick) internal pure returns (uint256) {
-
-
-        return uint256(int256(tick));
+        // Simple linear approximation for now (replace with proper 1.0001^tick)
+        // price = 1e18 * (1 + tick * 0.0001) = 1e18 + tick * 1e14
+        int256 priceInt = 1e18 + (int256(tick) * 1e14);
+        require(priceInt > 0, "OrderTypes: negative price");
+        return uint256(priceInt);
     }
 
     /// @notice Convert price to tick

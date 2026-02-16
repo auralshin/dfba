@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
 /// @title TickBitmap
 /// @notice Efficiently track which price ticks have active orders
 /// @dev Similar to Uniswap v3 tick bitmap for gas-efficient iteration
+/// @dev Uses OpenZeppelin Math.log2 for optimized bit operations
 library TickBitmap {
     uint256 private constant ONE = 1;
 
@@ -62,7 +65,7 @@ library TickBitmap {
 
 
         uint256 word = self[wordPos];
-        uint256 mask = ~((ONE << bitPos) - ONE);
+        uint256 mask = ~((ONE << uint256(bitPos)) - ONE); // Safety cast to prevent overflow
         uint256 masked = word & mask;
 
         if (masked != 0) {
@@ -101,9 +104,15 @@ library TickBitmap {
 
         (int16 wordPos, uint8 bitPos) = position(tick);
 
-
+        // CRITICAL FIX: Handle bitPos == 255 to prevent overflow
+        // When bitPos == 255, (bitPos + 1) would overflow uint8
         uint256 word = self[wordPos];
-        uint256 mask = (ONE << (bitPos + 1)) - ONE;
+        uint256 mask;
+        if (bitPos == 255) {
+            mask = type(uint256).max; // All bits set
+        } else {
+            mask = (ONE << (uint256(bitPos) + 1)) - ONE;
+        }
         uint256 masked = word & mask;
 
         if (masked != 0) {
@@ -127,81 +136,30 @@ library TickBitmap {
         return (0, false);
     }
 
-    /// @notice Get least significant bit position
+    /// @notice Get least significant bit position using OZ-inspired approach
     /// @param x The word
-    /// @return r The bit position
+    /// @return r The bit position (0-255)
     function leastSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
-
-        if (x & type(uint128).max == 0) {
-            r += 128;
-            x >>= 128;
-        }
-        if (x & type(uint64).max == 0) {
-            r += 64;
-            x >>= 64;
-        }
-        if (x & type(uint32).max == 0) {
-            r += 32;
-            x >>= 32;
-        }
-        if (x & type(uint16).max == 0) {
-            r += 16;
-            x >>= 16;
-        }
-        if (x & type(uint8).max == 0) {
-            r += 8;
-            x >>= 8;
-        }
-        if (x & 0xf == 0) {
-            r += 4;
-            x >>= 4;
-        }
-        if (x & 0x3 == 0) {
-            r += 2;
-            x >>= 2;
-        }
-        if (x & 0x1 == 0) {
-            r += 1;
-        }
+        
+        // Find the position of the least significant bit set to 1
+        // This is equivalent to finding the number of trailing zeros
+        // We use the fact that (x & -x) isolates the LSB
+        
+        // Isolate the least significant bit
+        uint256 isolated = x & (~x + 1);
+        
+        // Use OZ Math.log2 to find its position (MSB of isolated LSB is the LSB position)
+        return uint8(Math.log2(isolated));
     }
 
-    /// @notice Get most significant bit position
+    /// @notice Get most significant bit position using OpenZeppelin Math.log2
     /// @param x The word
-    /// @return r The bit position
+    /// @return r The bit position (0-255)
     function mostSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
-
-        if (x >= 0x100000000000000000000000000000000) {
-            r += 128;
-            x >>= 128;
-        }
-        if (x >= 0x10000000000000000) {
-            r += 64;
-            x >>= 64;
-        }
-        if (x >= 0x100000000) {
-            r += 32;
-            x >>= 32;
-        }
-        if (x >= 0x10000) {
-            r += 16;
-            x >>= 16;
-        }
-        if (x >= 0x100) {
-            r += 8;
-            x >>= 8;
-        }
-        if (x >= 0x10) {
-            r += 4;
-            x >>= 4;
-        }
-        if (x >= 0x4) {
-            r += 2;
-            x >>= 2;
-        }
-        if (x >= 0x2) {
-            r += 1;
-        }
+        
+        // OpenZeppelin's log2 gives us the MSB position directly
+        return uint8(Math.log2(x));
     }
 }

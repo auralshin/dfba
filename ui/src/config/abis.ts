@@ -9,7 +9,6 @@ export const AUCTION_HOUSE_ABI = [
         "components": [
           { "name": "trader", "type": "address" },
           { "name": "marketId", "type": "uint64" },
-          { "name": "auctionId", "type": "uint64" },
           { "name": "side", "type": "uint8" },
           { "name": "flow", "type": "uint8" },
           { "name": "priceTick", "type": "int24" },
@@ -19,88 +18,71 @@ export const AUCTION_HOUSE_ABI = [
         ]
       }
     ],
-    "outputs": [{ "name": "orderId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "orderId", "type": "bytes32" },
+      { "name": "batchId", "type": "uint64" }
+    ],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "getAuctionId",
+    "name": "getBatchId",
     "inputs": [{ "name": "marketId", "type": "uint64" }],
     "outputs": [{ "name": "", "type": "uint64" }],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "finalizeAuction",
-    "inputs": [
-      { "name": "marketId", "type": "uint64" },
-      { "name": "auctionId", "type": "uint64" }
-    ],
+    "name": "getBatchEnd",
+    "inputs": [{ "name": "marketId", "type": "uint64" }],
+    "outputs": [{ "name": "", "type": "uint64" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "cancelOrder",
+    "inputs": [{ "name": "orderId", "type": "bytes32" }],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "getClearing",
+    "name": "finalizeStep",
     "inputs": [
       { "name": "marketId", "type": "uint64" },
-      { "name": "auctionId", "type": "uint64" }
+      { "name": "batchId", "type": "uint64" },
+      { "name": "maxSteps", "type": "uint256" }
     ],
     "outputs": [
-      {
-        "name": "buyClearing",
-        "type": "tuple",
-        "components": [
-          { "name": "clearingTick", "type": "int24" },
-          { "name": "marginalFillMakerBps", "type": "uint16" },
-          { "name": "marginalFillTakerBps", "type": "uint16" },
-          { "name": "clearedQty", "type": "uint128" },
-          { "name": "finalized", "type": "bool" }
-        ]
-      },
-      {
-        "name": "sellClearing",
-        "type": "tuple",
-        "components": [
-          { "name": "clearingTick", "type": "int24" },
-          { "name": "marginalFillMakerBps", "type": "uint16" },
-          { "name": "marginalFillTakerBps", "type": "uint16" },
-          { "name": "clearedQty", "type": "uint128" },
-          { "name": "finalized", "type": "bool" }
-        ]
-      }
+      { "name": "phase", "type": "uint8" },
+      { "name": "done", "type": "bool" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "orders",
+    "inputs": [{ "name": "orderId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "trader", "type": "address" },
+      { "name": "marketId", "type": "uint64" },
+      { "name": "side", "type": "uint8" },
+      { "name": "flow", "type": "uint8" },
+      { "name": "priceTick", "type": "int24" },
+      { "name": "qty", "type": "uint128" },
+      { "name": "nonce", "type": "uint128" },
+      { "name": "expiry", "type": "uint64" }
     ],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "getOrder",
+    "name": "orderStates",
     "inputs": [{ "name": "orderId", "type": "bytes32" }],
     "outputs": [
-      {
-        "name": "order",
-        "type": "tuple",
-        "components": [
-          { "name": "trader", "type": "address" },
-          { "name": "marketId", "type": "uint64" },
-          { "name": "auctionId", "type": "uint64" },
-          { "name": "side", "type": "uint8" },
-          { "name": "flow", "type": "uint8" },
-          { "name": "priceTick", "type": "int24" },
-          { "name": "qty", "type": "uint128" },
-          { "name": "nonce", "type": "uint128" },
-          { "name": "expiry", "type": "uint64" }
-        ]
-      },
-      {
-        "name": "state",
-        "type": "tuple",
-        "components": [
-          { "name": "remainingQty", "type": "uint128" },
-          { "name": "claimedQty", "type": "uint128" },
-          { "name": "cancelled", "type": "bool" }
-        ]
-      }
+      { "name": "remainingQty", "type": "uint128" },
+      { "name": "claimedQty", "type": "uint128" },
+      { "name": "cancelled", "type": "bool" }
     ],
     "stateMutability": "view"
   },
@@ -112,15 +94,22 @@ export const AUCTION_HOUSE_ABI = [
       { "name": "marketType", "type": "uint8" },
       { "name": "baseToken", "type": "address" },
       { "name": "quoteToken", "type": "address" },
-      { "name": "startTime", "type": "uint64" }
+      { "name": "active", "type": "bool" }
     ],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "AUCTION_DURATION",
+    "name": "BATCH_DURATION",
     "inputs": [],
-    "outputs": [{ "name": "", "type": "uint64" }],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "userNonces",
+    "inputs": [{ "name": "user", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint128" }],
     "stateMutability": "view"
   }
 ] as const
@@ -136,7 +125,7 @@ export const PERP_ENGINE_ABI = [
         "components": [
           { "name": "trader", "type": "address" },
           { "name": "marketId", "type": "uint64" },
-          { "name": "auctionId", "type": "uint64" },
+          { "name": "batchId", "type": "uint64" },
           { "name": "side", "type": "uint8" },
           { "name": "flow", "type": "uint8" },
           { "name": "priceTick", "type": "int24" },
@@ -277,6 +266,131 @@ export const ERC20_ABI = [
     "name": "decimals",
     "inputs": [],
     "outputs": [{ "name": "", "type": "uint8" }],
+    "stateMutability": "view"
+  }
+] as const
+
+export const SPOT_ROUTER_ABI = [
+  {
+    "type": "function",
+    "name": "submitOrder",
+    "inputs": [
+      {
+        "name": "order",
+        "type": "tuple",
+        "components": [
+          { "name": "trader", "type": "address" },
+          { "name": "marketId", "type": "uint64" },
+          { "name": "side", "type": "uint8" },
+          { "name": "flow", "type": "uint8" },
+          { "name": "priceTick", "type": "int24" },
+          { "name": "qty", "type": "uint128" },
+          { "name": "nonce", "type": "uint128" },
+          { "name": "expiry", "type": "uint64" }
+        ]
+      }
+    ],
+    "outputs": [
+      { "name": "orderId", "type": "bytes32" },
+      { "name": "batchId", "type": "uint64" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "escrowLocks",
+    "inputs": [{ "name": "orderId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "baseAmount", "type": "uint128" },
+      { "name": "quoteAmount", "type": "uint128" }
+    ],
+    "stateMutability": "view"
+  }
+] as const
+
+export const PERP_ROUTER_ABI = [
+  {
+    "type": "function",
+    "name": "submitOrder",
+    "inputs": [
+      {
+        "name": "order",
+        "type": "tuple",
+        "components": [
+          { "name": "trader", "type": "address" },
+          { "name": "marketId", "type": "uint64" },
+          { "name": "side", "type": "uint8" },
+          { "name": "flow", "type": "uint8" },
+          { "name": "priceTick", "type": "int24" },
+          { "name": "qty", "type": "uint128" },
+          { "name": "nonce", "type": "uint128" },
+          { "name": "expiry", "type": "uint64" }
+        ]
+      },
+      { "name": "collateral", "type": "address" }
+    ],
+    "outputs": [
+      { "name": "orderId", "type": "bytes32" },
+      { "name": "batchId", "type": "uint64" }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "positions",
+    "inputs": [
+      { "name": "trader", "type": "address" },
+      { "name": "marketId", "type": "uint64" }
+    ],
+    "outputs": [{ "name": "", "type": "int256" }],
+    "stateMutability": "view"
+  }
+] as const
+
+export const CORE_VAULT_ABI = [
+  {
+    "type": "function",
+    "name": "deposit",
+    "inputs": [
+      { "name": "token", "type": "address" },
+      { "name": "amount", "type": "uint256" },
+      { "name": "subaccountId", "type": "uint256" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [
+      { "name": "token", "type": "address" },
+      { "name": "amount", "type": "uint256" },
+      { "name": "to", "type": "address" },
+      { "name": "subaccountId", "type": "uint256" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getAvailableBalance",
+    "inputs": [
+      { "name": "user", "type": "address" },
+      { "name": "token", "type": "address" },
+      { "name": "subaccountId", "type": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "balances",
+    "inputs": [
+      { "name": "user", "type": "address" },
+      { "name": "token", "type": "address" },
+      { "name": "subaccountId", "type": "uint256" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256" }],
     "stateMutability": "view"
   }
 ] as const
