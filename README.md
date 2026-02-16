@@ -135,13 +135,90 @@ According to Jump Crypto's analysis:
 - Production L2 deployment can use 200ms batches for "instantaneous feel" UX
 - Future batches allow pre-positioning for expected price moves
 
-## Implementation Highlights
+## Architecture
 
-- **L2-optimized**: Designed for deployment on Arbitrum, Optimism, or Base with 200ms batch windows
-- **Solidity contracts**: `AuctionHouse.sol` with incremental finalization to handle gas limits
-- **Order model**: Four-way maker/taker × bid/ask classification for dual auctions
+### Core Contracts
+
+- **AuctionHouse** (`src/core/AuctionHouse.sol`): Central batch auction mechanism with incremental finalization
+- **CoreVault** (`src/core/CoreVault.sol`): Unified collateral vault with subaccount support, manages deposits/withdrawals and reserves
+- **SpotRouter** (`src/core/SpotRouter.sol`): Handles spot order submission with automatic escrow locking and EIP-712 signatures
+- **PerpRouter** (`src/core/PerpRouter.sol`): Manages perp orders with position tracking, initial margin reserves, and risk checks
+- **PerpRisk** (`src/perp/PerpRisk.sol`): Risk engine for calculating initial margin requirements for perp positions
+
+### Supporting Components
+
+- **Indexer** (`indexer/`): Real-time TypeScript indexer using polling + SSE for event tracking and order/fill data
+- **UI** (`ui/`): React-based trading interface with Vite, wagmi, and RainbowKit integration
+- **Scripts** (`script/`): Foundry scripts for deployment, testing, and batch management
+
+### Key Features
+
+- **L2-optimized**: 200ms batch windows on Arbitrum/Optimism/Base
 - **Tick-based pricing**: Bitmap storage for gas-efficient price level management
 - **Dual clearing**: Independent uniform-price auctions for bid and ask sides
-- **Role-based access**: Routers handle token transfers and authorization checks
-- **Event indexing**: Off-chain indexer captures orders and fills via blockchain events
-- **Demo-ready**: 1-second batches for local Anvil testing, configurable for L2 deployment
+- **Role-based access**: Routers enforce pre-funding (spot) and margin requirements (perp)
+- **Subaccounts**: Multi-subaccount support for isolated positions
+- **Real-time updates**: SSE-based indexer for live order book and fill data
+
+## Project Structure
+
+```
+.
+├── src/
+│   ├── core/           # Core protocol contracts
+│   │   ├── AuctionHouse.sol
+│   │   ├── CoreVault.sol
+│   │   ├── PerpRouter.sol
+│   │   └── SpotRouter.sol
+│   ├── perp/           # Perp-specific modules
+│   │   ├── PerpRisk.sol
+│   │   └── OracleAdapter.sol
+│   ├── libraries/      # Shared libraries
+│   │   ├── OrderTypes.sol
+│   │   ├── Math.sol
+│   │   └── TickBitmap.sol
+│   └── interfaces/     # Contract interfaces
+├── test/               # Foundry test suites
+├── script/             # Deployment & management scripts
+├── indexer/            # Real-time TypeScript indexer
+│   └── src/
+│       └── index.ts
+└── ui/                 # React trading interface
+    └── src/
+```
+
+## Development
+
+### Smart Contracts
+
+```bash
+# Install Foundry dependencies
+forge install
+
+# Build contracts
+forge build
+
+# Run tests
+forge test
+
+# Deploy (local)
+forge script script/Deploy.s.sol --broadcast --rpc-url http://localhost:8545
+```
+
+### Indexer
+
+```bash
+cd indexer
+npm install
+cp .env.example .env
+# Edit .env with RPC_URL and contract addresses
+npm run dev
+```
+
+### UI
+
+```bash
+cd ui
+npm install
+npm run dev
+```
