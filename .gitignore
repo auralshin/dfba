@@ -52,3 +52,7 @@ fuzz/failures
 *.tmp
 *.temp
 .cache/
+
+# UI and indexer (not part of core protocol)
+ui/
+indexer/
