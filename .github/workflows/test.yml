@@ -21,7 +21,8 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          # Pin toolchain to avoid fmt drift from moving nightly formatter behavior.
+          version: 1.3.0
 
       - name: Show Forge version
         run: |
