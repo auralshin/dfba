@@ -486,7 +486,6 @@ contract AutoSettlementTest is Test {
 
     /// @notice Stress test: Rapid batch progression with continuous orders
     function testAutoSettlementRapidBatchProgression() public {
-        vm.skip(true); // TODO: Fix arithmetic underflow with empty historical batches
         uint64 startBatch = auctionHouse.getBatchId(marketId);
         uint64[] memory batches = new uint64[](5);
 
@@ -524,13 +523,15 @@ contract AutoSettlementTest is Test {
             );
 
             // Advance to next batch
-            vm.warp(block.timestamp + BATCH_DURATION + 1);
+            vm.warp(uint256(auctionHouse.getBatchEnd(marketId)) + 1);
         }
 
         // Fully finalize the batches we created
         for (uint256 i = 0; i < 5; i++) {
             fullyFinalizeBatch(batches[i]);
         }
+
+        assertEq(batches[0], startBatch, "First captured batch should match start");
 
         // Verify at least the first batch is finalized
         (AuctionHouse.FinalizePhase phase,,,,,) = auctionHouse.finalizeStates(marketId, batches[0]);

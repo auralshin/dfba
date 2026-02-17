@@ -153,6 +153,8 @@ contract AuctionHouse is AccessControl {
 
     /// @notice Oracle addresses per market (for perps)
     mapping(uint64 => address) public marketOracles;
+    /// @notice First valid batch for each market (used to bound auto-finalization backfill)
+    mapping(uint64 => uint64) public marketStartBatch;
 
     event MarketCreated(
         uint64 indexed marketId, OrderTypes.MarketType marketType, address baseToken, address quoteToken
@@ -203,6 +205,7 @@ contract AuctionHouse is AccessControl {
 
         marketId = ++marketCount;
         markets[marketId] = Market({marketType: marketType, baseToken: baseToken, quoteToken: quoteToken, active: true});
+        marketStartBatch[marketId] = getBatchId(marketId);
 
         if (oracle != address(0)) {
             marketOracles[marketId] = oracle;
@@ -401,11 +404,13 @@ contract AuctionHouse is AccessControl {
     function _autoFinalizePreviousBatch(uint64 marketId, uint64 batchId) internal {
         uint64 currentBatchId = getBatchId(marketId);
         if (batchId >= currentBatchId) return;
+        uint64 firstBatchId = marketStartBatch[marketId];
+        if (batchId < firstBatchId) return;
 
         // Find oldest unfinalized batch (bounded)
         uint64 oldestUnfinalized = batchId;
         uint256 maxBacklog = 10;
-        while (maxBacklog > 0 && oldestUnfinalized > 0) {
+        while (maxBacklog > 0 && oldestUnfinalized > firstBatchId) {
             FinalizeState storage prev = finalizeStates[marketId][oldestUnfinalized - 1];
             if (prev.phase == FinalizePhase.Done) break;
             oldestUnfinalized--;
