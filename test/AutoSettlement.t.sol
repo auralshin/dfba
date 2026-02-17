@@ -74,7 +74,7 @@ contract AutoSettlementTest is Test {
         // Move to a batch after the target batch
         uint64 currentBatch = auctionHouse.getBatchId(marketId);
         if (currentBatch <= batchId) {
-            vm.warp(block.timestamp + BATCH_DURATION * (batchId - currentBatch + 2));
+            vm.warp(block.timestamp + BATCH_DURATION * uint256(batchId - currentBatch + 2));
         }
 
         // Check if already finalized
@@ -485,9 +485,8 @@ contract AutoSettlementTest is Test {
     }
 
     /// @notice Stress test: Rapid batch progression with continuous orders
-    // TODO: Fix arithmetic underflow in rapid batch progression
-    // Temporarily disabled - see https://github.com/auralshin/dfba/issues/TBD
-    function skip_testAutoSettlementRapidBatchProgression() public {
+    function testAutoSettlementRapidBatchProgression() public {
+        vm.skip(true); // TODO: Fix arithmetic underflow with empty historical batches
         uint64 startBatch = auctionHouse.getBatchId(marketId);
         uint64[] memory batches = new uint64[](5);
 
