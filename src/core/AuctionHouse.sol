@@ -405,10 +405,11 @@ contract AuctionHouse is AccessControl {
         // Find oldest unfinalized batch (bounded)
         uint64 oldestUnfinalized = batchId;
         uint256 maxBacklog = 10;
-        for (uint256 i = 0; i < maxBacklog && oldestUnfinalized > 0; i++) {
+        while (maxBacklog > 0 && oldestUnfinalized > 0) {
             FinalizeState storage prev = finalizeStates[marketId][oldestUnfinalized - 1];
             if (prev.phase == FinalizePhase.Done) break;
             oldestUnfinalized--;
+            maxBacklog--;
         }
 
         // Finalize up to 3 old batches per tx (bounded)
