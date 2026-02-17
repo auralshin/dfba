@@ -45,5 +45,5 @@ jobs:
 
       - name: Run Forge coverage
         run: |
-          forge coverage --report summary
+          forge coverage --report summary --ir-minimum
         id: coverage
