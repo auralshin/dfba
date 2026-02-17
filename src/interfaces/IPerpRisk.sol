@@ -7,8 +7,5 @@ interface IPerpRisk {
         uint256 subaccountId,
         address token,
         uint256 amount
-    )
-        external
-        view
-        returns (bool);
+    ) external view returns (bool);
 }

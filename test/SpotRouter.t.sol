@@ -502,7 +502,9 @@ contract SpotRouterTest is Test {
         vm.stopPrank();
     }
 
-    function testFuzz_SubmitSellOrder(uint128 qty) public {
+    function testFuzz_SubmitSellOrder(
+        uint128 qty
+    ) public {
         qty = uint128(bound(uint256(qty), 1 * 10 ** 18, 100_000 * 10 ** 18)); // Start from 1 token minimum
 
         // Mint exact amount needed

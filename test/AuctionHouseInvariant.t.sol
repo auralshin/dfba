@@ -89,7 +89,9 @@ contract AuctionHouseHandler is Test {
     }
 
     /// @notice Cancel a random active order
-    function cancelOrder(uint256 orderSeed) public {
+    function cancelOrder(
+        uint256 orderSeed
+    ) public {
         if (orderCount == 0) return;
 
         // This is simplified - in practice would track order IDs
@@ -98,7 +100,9 @@ contract AuctionHouseHandler is Test {
     }
 
     /// @notice Advance time and finalize a batch
-    function finalizeBatch(uint256 timeDelta) public {
+    function finalizeBatch(
+        uint256 timeDelta
+    ) public {
         // Bound time advance to 1-10 batch durations
         timeDelta = bound(timeDelta, auctionHouse.BATCH_DURATION(), auctionHouse.BATCH_DURATION() * 10);
 
@@ -125,7 +129,9 @@ contract AuctionHouseHandler is Test {
     }
 
     /// @notice Warp time forward
-    function warpTime(uint256 timeDelta) public {
+    function warpTime(
+        uint256 timeDelta
+    ) public {
         timeDelta = bound(timeDelta, 1, auctionHouse.BATCH_DURATION() * 5);
         vm.warp(block.timestamp + timeDelta);
     }

@@ -8,7 +8,9 @@ import {console2} from "forge-std/console2.sol";
 
 // Simple ERC20 interface for minting
 interface IERC20Mintable {
-    function balanceOf(address account) external view returns (uint256);
+    function balanceOf(
+        address account
+    ) external view returns (uint256);
     function allowance(address owner, address spender) external view returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
     function mint(address to, uint256 amount) external;

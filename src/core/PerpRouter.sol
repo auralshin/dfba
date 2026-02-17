@@ -83,10 +83,7 @@ contract PerpRouter is EIP712, AccessControl {
     function submitOrder(
         OrderTypes.Order memory order,
         address collateral
-    )
-        external
-        returns (bytes32 orderId, uint64 batchId)
-    {
+    ) external returns (bytes32 orderId, uint64 batchId) {
         require(order.trader == msg.sender, "PerpRouter: unauthorized");
         return _submitOrderInternal(order, collateral);
     }
@@ -98,10 +95,7 @@ contract PerpRouter is EIP712, AccessControl {
         uint8 v,
         bytes32 r,
         bytes32 s
-    )
-        external
-        returns (bytes32 orderId, uint64 batchId)
-    {
+    ) external returns (bytes32 orderId, uint64 batchId) {
         // Verify signature using OpenZeppelin
         bytes32 structHash;
         bytes32 typeHash = ORDER_TYPEHASH;
@@ -130,10 +124,7 @@ contract PerpRouter is EIP712, AccessControl {
     function _submitOrderInternal(
         OrderTypes.Order memory order,
         address collateral
-    )
-        internal
-        returns (bytes32 orderId, uint64 batchId)
-    {
+    ) internal returns (bytes32 orderId, uint64 batchId) {
         // Verify market type
         (OrderTypes.MarketType marketType,,,) = AUCTION_HOUSE.markets(order.marketId);
         require(marketType == OrderTypes.MarketType.Perp, "PerpRouter: not perp market");
@@ -209,11 +200,7 @@ contract PerpRouter is EIP712, AccessControl {
         OrderTypes.Order memory order,
         int256 currentPosition,
         address collateral
-    )
-        internal
-        view
-        returns (uint256 imRequired)
-    {
+    ) internal view returns (uint256 imRequired) {
         // Get price from tick
         uint256 price = OrderTypes.tickToPrice(order.priceTick);
 
@@ -244,10 +231,7 @@ contract PerpRouter is EIP712, AccessControl {
         uint64 marketId,
         uint128 fillQty,
         OrderTypes.Side side
-    )
-        external
-        onlyRole(SETTLEMENT_ROLE)
-    {
+    ) external onlyRole(SETTLEMENT_ROLE) {
         int256 delta = side == OrderTypes.Side.Buy ? int256(uint256(fillQty)) : -int256(uint256(fillQty));
 
         positions[user][marketId] += delta;
@@ -262,7 +246,9 @@ contract PerpRouter is EIP712, AccessControl {
     /// @notice Release IM after order settled/cancelled
     /// @param orderId The order ID
     /// @dev CRITICAL: Only authorized settlement contracts can release
-    function releaseIM(bytes32 orderId) external onlyRole(SETTLEMENT_ROLE) {
+    function releaseIM(
+        bytes32 orderId
+    ) external onlyRole(SETTLEMENT_ROLE) {
         IMReserve memory reserve = imReserves[orderId];
         if (reserve.amount == 0) return;
 
@@ -286,7 +272,9 @@ contract PerpRouter is EIP712, AccessControl {
     }
 
     /// @notice Get IM reserve for order
-    function getIMReserve(bytes32 orderId) external view returns (IMReserve memory) {
+    function getIMReserve(
+        bytes32 orderId
+    ) external view returns (IMReserve memory) {
         return imReserves[orderId];
     }
 }

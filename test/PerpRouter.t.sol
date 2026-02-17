@@ -424,7 +424,9 @@ contract PerpRouterTest is Test {
         router.submitOrderSigned(order, address(collateralToken), v, r, s);
     }
 
-    function testFuzz_SubmitOrder(uint128 qty) public {
+    function testFuzz_SubmitOrder(
+        uint128 qty
+    ) public {
         qty = uint128(bound(uint256(qty), 1 * 10 ** 16, 10 * 10 ** 18)); // 0.01 to 10 BTC
 
         // Deposit large amount

@@ -68,7 +68,9 @@ contract AutoSettlementTest is Test {
     }
 
     /// @notice Helper to fully finalize a batch by repeatedly calling submitOrder
-    function fullyFinalizeBatch(uint64 batchId) internal {
+    function fullyFinalizeBatch(
+        uint64 batchId
+    ) internal {
         // Move to a batch after the target batch
         uint64 currentBatch = auctionHouse.getBatchId(marketId);
         if (currentBatch <= batchId) {
@@ -582,7 +584,9 @@ contract AutoSettlementTest is Test {
     }
 
     /// @notice Helper function to convert uint to string
-    function uint2str(uint256 _i) internal pure returns (string memory) {
+    function uint2str(
+        uint256 _i
+    ) internal pure returns (string memory) {
         if (_i == 0) {
             return "0";
         }

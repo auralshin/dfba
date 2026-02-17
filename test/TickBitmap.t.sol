@@ -153,7 +153,9 @@ contract TickBitmapTest is Test {
         assertEq(bitPos, 255);
     }
 
-    function testFuzzSetAndClear(int24 tick) public {
+    function testFuzzSetAndClear(
+        int24 tick
+    ) public {
         // Bound tick to reasonable range
         tick = int24(bound(int256(tick), -10_000, 10_000));
 

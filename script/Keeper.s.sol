@@ -33,9 +33,7 @@ contract Keeper is Script {
         uint64 marketId,
         string memory marketName,
         uint256 keeperKey
-    )
-        internal
-    {
+    ) internal {
         uint64 currentBatchId = auctionHouse.getBatchId(marketId);
         uint64 batchEnd = auctionHouse.getBatchEnd(marketId);
 

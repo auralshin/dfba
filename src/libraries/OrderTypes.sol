@@ -59,7 +59,9 @@ library OrderTypes {
         uint128 takerSell;
     }
 
-    function orderKey(Order memory order) internal pure returns (bytes32 key) {
+    function orderKey(
+        Order memory order
+    ) internal pure returns (bytes32 key) {
         // Pull fields into stack vars so we don't rely on struct memory layout/packing.
         address trader = order.trader;
         uint256 marketId = uint256(order.marketId);
@@ -116,11 +118,7 @@ library OrderTypes {
         Order memory order,
         Clearing memory clearing,
         uint128 /* levelQty */
-    )
-        internal
-        pure
-        returns (uint128)
-    {
+    ) internal pure returns (uint128) {
         if (!inTheMoney(order, clearing)) return 0;
 
         bool isMarginal = (order.priceTick == clearing.clearingTick);
@@ -146,7 +144,9 @@ library OrderTypes {
     /// @dev Returns price in WAD (1e18) precision
     /// @dev For simplicity using approximation: price ≈ 1e18 * (1 + tick/10000) for small ticks
     /// @dev Production should use proper exponential or lookup table
-    function tickToPrice(int24 tick) internal pure returns (uint256) {
+    function tickToPrice(
+        int24 tick
+    ) internal pure returns (uint256) {
         // Simple linear approximation for now (replace with proper 1.0001^tick)
         // price = 1e18 * (1 + tick * 0.0001) = 1e18 + tick * 1e14
         int256 priceInt = 1e18 + (int256(tick) * 1e14);
@@ -155,7 +155,9 @@ library OrderTypes {
     }
 
     /// @notice Convert price to tick
-    function priceToTick(uint256 price) internal pure returns (int24) {
+    function priceToTick(
+        uint256 price
+    ) internal pure returns (int24) {
         return int24(int256(price));
     }
 }

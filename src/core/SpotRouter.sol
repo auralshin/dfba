@@ -78,7 +78,9 @@ contract SpotRouter is EIP712, AccessControl {
     /// @notice Submit spot order with automatic escrow locking
     /// @param order The spot order to submit
     /// @dev Buy orders lock quote + fee buffer, sell orders lock base
-    function submitOrder(OrderTypes.Order memory order) external returns (bytes32 orderId, uint64 batchId) {
+    function submitOrder(
+        OrderTypes.Order memory order
+    ) external returns (bytes32 orderId, uint64 batchId) {
         // Authenticate: msg.sender must be trader
         require(order.trader == msg.sender, "SpotRouter: unauthorized");
 
@@ -96,10 +98,7 @@ contract SpotRouter is EIP712, AccessControl {
         uint8 v,
         bytes32 r,
         bytes32 s
-    )
-        external
-        returns (bytes32 orderId, uint64 batchId)
-    {
+    ) external returns (bytes32 orderId, uint64 batchId) {
         // Verify EIP-712 signature using OpenZeppelin
         bytes32 structHash;
         bytes32 typeHash = ORDER_TYPEHASH;
@@ -126,7 +125,9 @@ contract SpotRouter is EIP712, AccessControl {
     }
 
     /// @notice Internal order submission with escrow locking
-    function _submitOrderInternal(OrderTypes.Order memory order) internal returns (bytes32 orderId, uint64 batchId) {
+    function _submitOrderInternal(
+        OrderTypes.Order memory order
+    ) internal returns (bytes32 orderId, uint64 batchId) {
         // Get market info
         (OrderTypes.MarketType marketType, address baseToken, address quoteToken,) =
             AUCTION_HOUSE.markets(order.marketId);
@@ -181,11 +182,7 @@ contract SpotRouter is EIP712, AccessControl {
         OrderTypes.Order memory order,
         address baseToken,
         address quoteToken
-    )
-        internal
-        pure
-        returns (uint128 baseEscrow, uint128 quoteEscrow)
-    {
+    ) internal pure returns (uint128 baseEscrow, uint128 quoteEscrow) {
         // CRITICAL FIX: Use proper tick-to-price conversion (WAD precision: 1e18)
         uint256 price = OrderTypes.tickToPrice(order.priceTick);
 
@@ -210,7 +207,9 @@ contract SpotRouter is EIP712, AccessControl {
     /// @notice Release escrow after order settled/cancelled
     /// @param orderId The order ID
     /// @dev CRITICAL: Only authorized settlement contracts can release
-    function releaseEscrow(bytes32 orderId) external onlyRole(SETTLEMENT_ROLE) {
+    function releaseEscrow(
+        bytes32 orderId
+    ) external onlyRole(SETTLEMENT_ROLE) {
         EscrowLock memory lock = escrowLocks[orderId];
         require(lock.baseAmount > 0 || lock.quoteAmount > 0, "SpotRouter: no escrow");
 
@@ -241,7 +240,9 @@ contract SpotRouter is EIP712, AccessControl {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get escrow lock for an order
-    function getEscrowLock(bytes32 orderId) external view returns (uint128 baseAmount, uint128 quoteAmount) {
+    function getEscrowLock(
+        bytes32 orderId
+    ) external view returns (uint128 baseAmount, uint128 quoteAmount) {
         EscrowLock memory lock = escrowLocks[orderId];
         return (lock.baseAmount, lock.quoteAmount);
     }

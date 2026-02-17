@@ -102,19 +102,25 @@ contract CoreVault {
         emit AuthorizedUpdated(account, _authorized);
     }
 
-    function addCollateral(address token) external onlyAdmin {
+    function addCollateral(
+        address token
+    ) external onlyAdmin {
         require(token != address(0), "CoreVault: zero address");
         require(token.code.length > 0, "CoreVault: not contract");
         supportedCollateral[token] = true;
         emit CollateralAdded(token);
     }
 
-    function removeCollateral(address token) external onlyAdmin {
+    function removeCollateral(
+        address token
+    ) external onlyAdmin {
         supportedCollateral[token] = false;
         emit CollateralRemoved(token);
     }
 
-    function setRiskModule(address _riskModule) external onlyAdmin {
+    function setRiskModule(
+        address _riskModule
+    ) external onlyAdmin {
         riskModule = IPerpRisk(_riskModule);
         emit RiskModuleUpdated(_riskModule);
     }
@@ -179,10 +185,7 @@ contract CoreVault {
         address to,
         uint256 toSubaccount,
         uint256 amount
-    )
-        external
-        onlyAuthorized
-    {
+    ) external onlyAuthorized {
         require(amount > 0, "CoreVault: zero amount");
         require(balances[from][fromSubaccount][token] >= amount, "CoreVault: insufficient balance");
 
@@ -232,12 +235,10 @@ contract CoreVault {
         uint256 subaccountId,
         address token,
         uint256 amount
-    )
-        external
-        onlyAuthorized
-    {
+    ) external onlyAuthorized {
         require(amount > 0, "CoreVault: zero amount");
-        require(reserveIM[orderId][token] == 0, "CoreVault: already reserved"); // CRITICAL: Prevent double-call corruption
+        require(reserveIM[orderId][token] == 0, "CoreVault: already reserved"); // CRITICAL: Prevent double-call
+            // corruption
         require(balances[user][subaccountId][token] >= amount, "CoreVault: insufficient balance");
 
         reserveIM[orderId][token] = amount;
@@ -256,10 +257,7 @@ contract CoreVault {
         address user,
         uint256 subaccountId,
         address token
-    )
-        external
-        onlyAuthorized
-    {
+    ) external onlyAuthorized {
         uint256 amount = reserveIM[orderId][token];
         if (amount == 0) return;
 
@@ -282,11 +280,7 @@ contract CoreVault {
         address user,
         uint256 subaccountId,
         address token
-    )
-        public
-        view
-        returns (uint256 available)
-    {
+    ) public view returns (uint256 available) {
         uint256 total = balances[user][subaccountId][token];
         uint256 reserved = totalReservedPerToken[user][subaccountId][token];
         return total > reserved ? total - reserved : 0;

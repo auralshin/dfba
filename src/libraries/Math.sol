@@ -31,11 +31,7 @@ library DFBAMath {
         uint256 qty1,
         uint256 price2,
         uint256 qty2
-    )
-        internal
-        pure
-        returns (uint256)
-    {
+    ) internal pure returns (uint256) {
         uint256 totalQty = qty1 + qty2;
         if (totalQty == 0) return 0;
         return (price1 * qty1 + price2 * qty2) / totalQty;

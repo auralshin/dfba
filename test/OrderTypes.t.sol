@@ -151,9 +151,7 @@ contract OrderTypesTest is Test {
         uint128 qty,
         uint128 nonce,
         uint64 expiry
-    )
-        public
-    {
+    ) public {
         OrderTypes.Order memory order = OrderTypes.Order({
             trader: trader,
             marketId: marketId,

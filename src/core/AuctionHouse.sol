@@ -178,11 +178,7 @@ contract AuctionHouse is AccessControl {
         OrderTypes.MarketType marketType,
         address baseToken,
         address quoteToken
-    )
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-        returns (uint64 marketId)
-    {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint64 marketId) {
         return createMarketWithOracle(marketType, baseToken, quoteToken, address(0));
     }
 
@@ -192,11 +188,7 @@ contract AuctionHouse is AccessControl {
         address baseToken,
         address quoteToken,
         address oracle
-    )
-        public
-        onlyRole(DEFAULT_ADMIN_ROLE)
-        returns (uint64 marketId)
-    {
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) returns (uint64 marketId) {
         require(baseToken != address(0), "AuctionHouse: zero base token");
         require(_isContract(baseToken), "AuctionHouse: base token not contract");
 
@@ -220,11 +212,15 @@ contract AuctionHouse is AccessControl {
         emit MarketCreated(marketId, marketType, baseToken, quoteToken);
     }
 
-    function grantRouterRole(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function grantRouterRole(
+        address account
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         grantRole(ROUTER_ROLE, account);
     }
 
-    function revokeRouterRole(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function revokeRouterRole(
+        address account
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(ROUTER_ROLE, account);
     }
 
@@ -243,7 +239,9 @@ contract AuctionHouse is AccessControl {
         emit OracleSet(marketId, oracle);
     }
 
-    function _isContract(address account) internal view returns (bool) {
+    function _isContract(
+        address account
+    ) internal view returns (bool) {
         return account.code.length > 0;
     }
 
@@ -253,21 +251,23 @@ contract AuctionHouse is AccessControl {
 
     /// @notice Get current batch ID for a market (time-based, liveness-safe)
     /// @dev marketId is unused (kept for interface symmetry); batchId is global time-bucket.
-    function getBatchId(uint64 /*marketId*/ ) public view returns (uint64) {
+    function getBatchId(
+        uint64 /*marketId*/
+    ) public view returns (uint64) {
         return uint64(block.timestamp / BATCH_DURATION);
     }
 
-    function getBatchEnd(uint64 marketId) public view returns (uint64) {
+    function getBatchEnd(
+        uint64 marketId
+    ) public view returns (uint64) {
         uint64 currentBatchId = getBatchId(marketId);
         return (currentBatchId + 1) * uint64(BATCH_DURATION);
     }
 
     /// @notice Submit an order (assigned to current time-batch)
-    function submitOrder(OrderTypes.Order memory order)
-        external
-        onlyRole(ROUTER_ROLE)
-        returns (bytes32 orderId, uint64 batchId)
-    {
+    function submitOrder(
+        OrderTypes.Order memory order
+    ) external onlyRole(ROUTER_ROLE) returns (bytes32 orderId, uint64 batchId) {
         Market storage market = markets[order.marketId];
         require(market.active, "AuctionHouse: market not active");
 
@@ -333,7 +333,9 @@ contract AuctionHouse is AccessControl {
     }
 
     /// @notice Cancel an order (maker-only; only in current batch before cutoff)
-    function cancelOrder(bytes32 orderId) external {
+    function cancelOrder(
+        bytes32 orderId
+    ) external {
         OrderTypes.Order storage order = orders[orderId];
         require(order.trader == msg.sender, "AuctionHouse: not order owner");
         require(order.flow == OrderTypes.Flow.Maker, "AuctionHouse: only makers can cancel");
@@ -424,10 +426,7 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         uint256 maxSteps
-    )
-        internal
-        returns (uint256 ticksProcessed)
-    {
+    ) internal returns (uint256 ticksProcessed) {
         FinalizeState storage state = finalizeStates[marketId][batchId];
         if (state.phase == FinalizePhase.Done) return 0;
 
@@ -546,10 +545,7 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         uint256 maxSteps
-    )
-        external
-        returns (FinalizePhase phase, bool done)
-    {
+    ) external returns (FinalizePhase phase, bool done) {
         require(marketId > 0 && marketId <= marketCount, "AuctionHouse: market does not exist");
 
         uint64 currentBatchId = getBatchId(marketId);
@@ -853,16 +849,14 @@ contract AuctionHouse is AccessControl {
     function getClearing(
         uint64 marketId,
         uint64 batchId
-    )
-        external
-        view
-        returns (OrderTypes.Clearing memory bidClearing, OrderTypes.Clearing memory askClearing)
-    {
+    ) external view returns (OrderTypes.Clearing memory bidClearing, OrderTypes.Clearing memory askClearing) {
         AuctionState storage batch = historicalBatches[marketId][batchId];
         return (batch.bidClearing, batch.askClearing);
     }
 
-    function getOrder(bytes32 orderId) external view returns (OrderTypes.Order memory, OrderTypes.OrderState memory) {
+    function getOrder(
+        bytes32 orderId
+    ) external view returns (OrderTypes.Order memory, OrderTypes.OrderState memory) {
         return (orders[orderId], orderStates[orderId]);
     }
 
@@ -870,15 +864,13 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         int24 tick
-    )
-        external
-        view
-        returns (OrderTypes.TickLevel memory)
-    {
+    ) external view returns (OrderTypes.TickLevel memory) {
         return batchData[marketId][batchId].tickLevels[tick];
     }
 
-    function getOrderFilledQty(bytes32 orderId) external view returns (uint128 filledQty) {
+    function getOrderFilledQty(
+        bytes32 orderId
+    ) external view returns (uint128 filledQty) {
         OrderTypes.Order storage order = orders[orderId];
         if (order.trader == address(0)) return 0;
 
@@ -904,10 +896,7 @@ contract AuctionHouse is AccessControl {
         bytes32 orderId,
         uint128 claimedQty,
         uint128 remainingQty
-    )
-        external
-        onlyRole(ROUTER_ROLE)
-    {
+    ) external onlyRole(ROUTER_ROLE) {
         OrderTypes.OrderState storage state = orderStates[orderId];
         state.claimedQty = claimedQty;
         state.remainingQty = remainingQty;

@@ -31,7 +31,9 @@ contract DummyOracle {
                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(uint256 initialPrice) {
+    constructor(
+        uint256 initialPrice
+    ) {
         admin = msg.sender;
         price = initialPrice;
         updatedAt = block.timestamp;
@@ -42,7 +44,9 @@ contract DummyOracle {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Update the oracle price
-    function updatePrice(uint256 newPrice) external {
+    function updatePrice(
+        uint256 newPrice
+    ) external {
         require(msg.sender == admin, "DummyOracle: not admin");
         price = newPrice;
         updatedAt = block.timestamp;
@@ -50,7 +54,9 @@ contract DummyOracle {
     }
 
     /// @notice Transfer admin rights
-    function setAdmin(address newAdmin) external {
+    function setAdmin(
+        address newAdmin
+    ) external {
         require(msg.sender == admin, "DummyOracle: not admin");
         require(newAdmin != address(0), "DummyOracle: zero address");
         admin = newAdmin;
@@ -81,7 +87,9 @@ contract DummyOracle {
     }
 
     /// @notice Check if price is stale
-    function isStale(uint256 stalenessThreshold) external view returns (bool) {
+    function isStale(
+        uint256 stalenessThreshold
+    ) external view returns (bool) {
         return block.timestamp - updatedAt > stalenessThreshold;
     }
 }

@@ -89,9 +89,7 @@ contract AuctionHouseFuzzTest is Test {
         int24 tick1,
         int24 tick2,
         int24 tick3
-    )
-        public
-    {
+    ) public {
         // Bound quantities
         qty1 = uint128(bound(uint256(qty1), 1, 100 * 10 ** 18));
         qty2 = uint128(bound(uint256(qty2), 1, 100 * 10 ** 18));
@@ -206,7 +204,9 @@ contract AuctionHouseFuzzTest is Test {
     }
 
     /// @notice Fuzz test: batch ID calculation is deterministic
-    function testFuzz_BatchIdCalculation(uint64 timestamp) public {
+    function testFuzz_BatchIdCalculation(
+        uint64 timestamp
+    ) public {
         // Bound timestamp to reasonable range (not too far future to avoid overflow)
         timestamp = uint64(bound(uint256(timestamp), block.timestamp, block.timestamp + 365 days));
 
@@ -233,9 +233,7 @@ contract AuctionHouseFuzzTest is Test {
         int24 tick2,
         uint128 qty1,
         uint128 qty2
-    )
-        public
-    {
+    ) public {
         vm.assume(trader1 != address(0) && trader2 != address(0));
 
         // Bound ticks

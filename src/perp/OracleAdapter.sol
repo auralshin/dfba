@@ -74,7 +74,9 @@ contract OracleAdapter {
 
     /// @notice Get index price for a market
     /// @dev Uses external oracle or cached price
-    function getIndexPrice(uint64 marketId) external view returns (uint256) {
+    function getIndexPrice(
+        uint64 marketId
+    ) external view returns (uint256) {
         address oracle = oracles[marketId];
 
         if (oracle != address(0)) {
@@ -93,12 +95,16 @@ contract OracleAdapter {
 
     /// @notice Get mark price (can differ from index for perp-specific logic)
     /// @dev Simplified: returns index price. In production, might use TWAP or other logic
-    function getMarkPrice(uint64 marketId) external view returns (uint256) {
+    function getMarkPrice(
+        uint64 marketId
+    ) external view returns (uint256) {
         return this.getIndexPrice(marketId);
     }
 
     /// @notice Check if price is fresh
-    function isPriceFresh(uint64 marketId) external view returns (bool) {
+    function isPriceFresh(
+        uint64 marketId
+    ) external view returns (bool) {
         return block.timestamp - lastUpdate[marketId] <= STALENESS_THRESHOLD;
     }
 }

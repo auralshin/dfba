@@ -14,7 +14,9 @@ library TickBitmap {
     /// @param tick The tick
     /// @return wordPos The word position (tick >> 8)
     /// @return bitPos The bit position (tick & 0xFF)
-    function position(int24 tick) internal pure returns (int16 wordPos, uint8 bitPos) {
+    function position(
+        int24 tick
+    ) internal pure returns (int16 wordPos, uint8 bitPos) {
         wordPos = int16(tick >> 8);
         bitPos = uint8(uint24(tick) & 0xFF);
     }
@@ -54,11 +56,7 @@ library TickBitmap {
         mapping(int16 => uint256) storage self,
         int24 tick,
         int24 maxTick
-    )
-        internal
-        view
-        returns (int24 next, bool found)
-    {
+    ) internal view returns (int24 next, bool found) {
         if (tick > maxTick) return (0, false);
 
         (int16 wordPos, uint8 bitPos) = position(tick);
@@ -96,11 +94,7 @@ library TickBitmap {
         mapping(int16 => uint256) storage self,
         int24 tick,
         int24 minTick
-    )
-        internal
-        view
-        returns (int24 prev, bool found)
-    {
+    ) internal view returns (int24 prev, bool found) {
         if (tick < minTick) return (0, false);
 
         (int16 wordPos, uint8 bitPos) = position(tick);
@@ -138,7 +132,9 @@ library TickBitmap {
     /// @notice Get least significant bit position using OZ-inspired approach
     /// @param x The word
     /// @return r The bit position (0-255)
-    function leastSignificantBit(uint256 x) internal pure returns (uint8 r) {
+    function leastSignificantBit(
+        uint256 x
+    ) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
 
         // Find the position of the least significant bit set to 1
@@ -155,7 +151,9 @@ library TickBitmap {
     /// @notice Get most significant bit position using OpenZeppelin Math.log2
     /// @param x The word
     /// @return r The bit position (0-255)
-    function mostSignificantBit(uint256 x) internal pure returns (uint8 r) {
+    function mostSignificantBit(
+        uint256 x
+    ) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
 
         // OpenZeppelin's log2 gives us the MSB position directly

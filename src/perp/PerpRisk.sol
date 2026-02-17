@@ -64,7 +64,9 @@ contract PerpRisk {
                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _oracle) {
+    constructor(
+        address _oracle
+    ) {
         ORACLE = OracleAdapter(_oracle);
         admin = msg.sender;
     }
@@ -106,11 +108,7 @@ contract PerpRisk {
         uint64 marketId,
         uint128 size,
         uint256 markPrice
-    )
-        external
-        view
-        returns (uint256)
-    {
+    ) external view returns (uint256) {
         RiskParams storage params = marketRiskParams[marketId];
         uint256 notional = DFBAMath.notional(size, markPrice);
         return DFBAMath.applyBps(notional, params.maintenanceMarginBps);
@@ -145,11 +143,7 @@ contract PerpRisk {
         Position memory position,
         uint256 markPrice,
         int256 marginBalance
-    )
-        external
-        view
-        returns (bool)
-    {
+    ) external view returns (bool) {
         if (position.size == 0) return false;
 
         int256 unrealizedPnL = calculateUnrealizedPnL(position, markPrice);
@@ -172,11 +166,7 @@ contract PerpRisk {
         uint64 marketId,
         uint128 positionSize,
         uint256 markPrice
-    )
-        external
-        view
-        returns (uint256)
-    {
+    ) external view returns (uint256) {
         RiskParams storage params = marketRiskParams[marketId];
         uint256 notional = DFBAMath.notional(positionSize, markPrice);
         return DFBAMath.applyBps(notional, params.liquidationFeeBps);
@@ -219,7 +209,9 @@ contract PerpRisk {
                           VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function getRiskParams(uint64 marketId) external view returns (RiskParams memory) {
+    function getRiskParams(
+        uint64 marketId
+    ) external view returns (RiskParams memory) {
         return marketRiskParams[marketId];
     }
 }
