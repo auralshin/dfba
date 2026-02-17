@@ -45,7 +45,14 @@ contract CoreVault {
 
     event Deposit(address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount);
-    event Move(address indexed token, address indexed from, uint256 fromSubaccount, address indexed to, uint256 toSubaccount, uint256 amount);
+    event Move(
+        address indexed token,
+        address indexed from,
+        uint256 fromSubaccount,
+        address indexed to,
+        uint256 toSubaccount,
+        uint256 amount
+    );
     event EscrowLocked(uint64 indexed marketId, address indexed token, uint256 amount);
     event EscrowReleased(uint64 indexed marketId, address indexed token, uint256 amount);
     event IMReserved(bytes32 indexed orderId, address indexed token, uint256 amount);
@@ -131,7 +138,7 @@ contract CoreVault {
         uint256 actualAmount = balanceAfter - balanceBefore;
 
         balances[msg.sender][subaccountId][token] += actualAmount;
-        
+
         emit Deposit(msg.sender, subaccountId, token, actualAmount);
     }
 
@@ -142,21 +149,20 @@ contract CoreVault {
     /// @dev Risk-gated: checks maintenance margin requirements if risk module set
     function withdraw(uint256 subaccountId, address token, uint256 amount) external {
         require(amount > 0, "CoreVault: zero amount");
-        
+
         uint256 available = getAvailableBalance(msg.sender, subaccountId, token);
         require(amount <= available, "CoreVault: insufficient available balance");
 
         // Risk check: ensure withdrawal doesn't violate maintenance margin
         if (address(riskModule) != address(0)) {
             require(
-                riskModule.canWithdraw(msg.sender, subaccountId, token, amount),
-                "CoreVault: withdrawal violates MM"
+                riskModule.canWithdraw(msg.sender, subaccountId, token, amount), "CoreVault: withdrawal violates MM"
             );
         }
 
         balances[msg.sender][subaccountId][token] -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
-        
+
         emit Withdraw(msg.sender, subaccountId, token, amount);
     }
 
@@ -173,7 +179,10 @@ contract CoreVault {
         address to,
         uint256 toSubaccount,
         uint256 amount
-    ) external onlyAuthorized {
+    )
+        external
+        onlyAuthorized
+    {
         require(amount > 0, "CoreVault: zero amount");
         require(balances[from][fromSubaccount][token] >= amount, "CoreVault: insufficient balance");
 
@@ -223,7 +232,10 @@ contract CoreVault {
         uint256 subaccountId,
         address token,
         uint256 amount
-    ) external onlyAuthorized {
+    )
+        external
+        onlyAuthorized
+    {
         require(amount > 0, "CoreVault: zero amount");
         require(reserveIM[orderId][token] == 0, "CoreVault: already reserved"); // CRITICAL: Prevent double-call corruption
         require(balances[user][subaccountId][token] >= amount, "CoreVault: insufficient balance");
@@ -244,7 +256,10 @@ contract CoreVault {
         address user,
         uint256 subaccountId,
         address token
-    ) external onlyAuthorized {
+    )
+        external
+        onlyAuthorized
+    {
         uint256 amount = reserveIM[orderId][token];
         if (amount == 0) return;
 
@@ -263,7 +278,11 @@ contract CoreVault {
     /// @param subaccountId The subaccount ID
     /// @param token The token address
     /// @return available The available (withdrawable) balance
-    function getAvailableBalance(address user, uint256 subaccountId, address token)
+    function getAvailableBalance(
+        address user,
+        uint256 subaccountId,
+        address token
+    )
         public
         view
         returns (uint256 available)

@@ -91,11 +91,7 @@ contract PerpRisk {
     /// @param size Position size (absolute value)
     /// @param price Entry price
     /// @return Initial margin required
-    function initialMarginRequired(uint64 marketId, uint128 size, uint256 price)
-        external
-        view
-        returns (uint256)
-    {
+    function initialMarginRequired(uint64 marketId, uint128 size, uint256 price) external view returns (uint256) {
         RiskParams storage params = marketRiskParams[marketId];
         uint256 notional = DFBAMath.notional(size, price);
         return DFBAMath.applyBps(notional, params.initialMarginBps);
@@ -106,7 +102,11 @@ contract PerpRisk {
     /// @param size Position size (absolute value)
     /// @param markPrice Current mark price
     /// @return Maintenance margin required
-    function maintenanceMarginRequired(uint64 marketId, uint128 size, uint256 markPrice)
+    function maintenanceMarginRequired(
+        uint64 marketId,
+        uint128 size,
+        uint256 markPrice
+    )
         external
         view
         returns (uint256)
@@ -120,11 +120,7 @@ contract PerpRisk {
     /// @param position The position
     /// @param markPrice Current mark price
     /// @return PnL (positive for profit, negative for loss)
-    function calculateUnrealizedPnL(Position memory position, uint256 markPrice)
-        public
-        pure
-        returns (int256)
-    {
+    function calculateUnrealizedPnL(Position memory position, uint256 markPrice) public pure returns (int256) {
         if (position.size == 0) return 0;
 
         uint128 absSize = SafeCast.toUint128(SignedMath.abs(position.size));
@@ -132,10 +128,8 @@ contract PerpRisk {
         uint256 entryValue = DFBAMath.notional(absSize, position.entryPrice);
 
         if (position.size > 0) {
-
             return int256(currentValue) - int256(entryValue);
         } else {
-
             return int256(entryValue) - int256(currentValue);
         }
     }
@@ -151,15 +145,17 @@ contract PerpRisk {
         Position memory position,
         uint256 markPrice,
         int256 marginBalance
-    ) external view returns (bool) {
+    )
+        external
+        view
+        returns (bool)
+    {
         if (position.size == 0) return false;
-
 
         int256 unrealizedPnL = calculateUnrealizedPnL(position, markPrice);
         int256 totalMargin = marginBalance + unrealizedPnL;
 
         if (totalMargin <= 0) return true;
-
 
         uint128 absSize = SafeCast.toUint128(SignedMath.abs(position.size));
         uint256 mmRequired = this.maintenanceMarginRequired(marketId, absSize, markPrice);
@@ -172,7 +168,11 @@ contract PerpRisk {
     /// @param positionSize Position size
     /// @param markPrice Mark price
     /// @return Liquidation fee
-    function calculateLiquidationFee(uint64 marketId, uint128 positionSize, uint256 markPrice)
+    function calculateLiquidationFee(
+        uint64 marketId,
+        uint128 positionSize,
+        uint256 markPrice
+    )
         external
         view
         returns (uint256)
@@ -187,11 +187,7 @@ contract PerpRisk {
     /// @param currentSize Current position size
     /// @param orderSize Order size (signed)
     /// @return True if valid
-    function validatePositionSize(uint64 marketId, int128 currentSize, int128 orderSize)
-        external
-        view
-        returns (bool)
-    {
+    function validatePositionSize(uint64 marketId, int128 currentSize, int128 orderSize) external view returns (bool) {
         RiskParams storage params = marketRiskParams[marketId];
         int128 newSize = currentSize + orderSize;
         return SignedMath.abs(newSize) <= params.maxPositionSize;
@@ -202,20 +198,15 @@ contract PerpRisk {
     /// @param availableMargin Available margin
     /// @param price Entry price
     /// @return Maximum order size
-    function maxOrderSize(uint64 marketId, uint256 availableMargin, uint256 price)
-        external
-        view
-        returns (uint128)
-    {
+    function maxOrderSize(uint64 marketId, uint256 availableMargin, uint256 price) external view returns (uint128) {
         RiskParams storage params = marketRiskParams[marketId];
-        
+
         // Prevent divide by zero
         require(params.initialMarginBps > 0, "PerpRisk: invalid IM");
         require(price > 0, "PerpRisk: invalid price");
 
         uint256 maxNotional = (availableMargin * DFBAMath.BPS) / params.initialMarginBps;
         uint256 size = (maxNotional * DFBAMath.WAD) / price;
-        
 
         if (size > params.maxPositionSize) {
             size = params.maxPositionSize;

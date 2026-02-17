@@ -59,37 +59,36 @@ library OrderTypes {
         uint128 takerSell;
     }
 
-function orderKey(Order memory order) internal pure returns (bytes32 key) {
-    // Pull fields into stack vars so we don't rely on struct memory layout/packing.
-    address trader = order.trader;
-    uint256 marketId = uint256(order.marketId);
-    uint256 side = uint256(uint8(order.side)); // if enum/uint8
-    uint256 flow = uint256(uint8(order.flow)); // if enum/uint8
-    int256 priceTick = int256(order.priceTick); // keep signed if it’s signed
-    uint256 qty = uint256(order.qty);
-    uint256 nonce = uint256(order.nonce);
-    uint256 expiry = uint256(order.expiry);
+    function orderKey(Order memory order) internal pure returns (bytes32 key) {
+        // Pull fields into stack vars so we don't rely on struct memory layout/packing.
+        address trader = order.trader;
+        uint256 marketId = uint256(order.marketId);
+        uint256 side = uint256(uint8(order.side)); // if enum/uint8
+        uint256 flow = uint256(uint8(order.flow)); // if enum/uint8
+        int256 priceTick = int256(order.priceTick); // keep signed if it’s signed
+        uint256 qty = uint256(order.qty);
+        uint256 nonce = uint256(order.nonce);
+        uint256 expiry = uint256(order.expiry);
 
-    assembly {
-        let ptr := mload(0x40)
+        assembly {
+            let ptr := mload(0x40)
 
-        // abi.encode(...) places each argument in its own 32-byte word.
-        mstore(ptr, trader)
-        mstore(add(ptr, 0x20), marketId)
-        mstore(add(ptr, 0x40), side)
-        mstore(add(ptr, 0x60), flow)
-        mstore(add(ptr, 0x80), priceTick)
-        mstore(add(ptr, 0xA0), qty)
-        mstore(add(ptr, 0xC0), nonce)
-        mstore(add(ptr, 0xE0), expiry)
+            // abi.encode(...) places each argument in its own 32-byte word.
+            mstore(ptr, trader)
+            mstore(add(ptr, 0x20), marketId)
+            mstore(add(ptr, 0x40), side)
+            mstore(add(ptr, 0x60), flow)
+            mstore(add(ptr, 0x80), priceTick)
+            mstore(add(ptr, 0xA0), qty)
+            mstore(add(ptr, 0xC0), nonce)
+            mstore(add(ptr, 0xE0), expiry)
 
-        key := keccak256(ptr, 0x100)
+            key := keccak256(ptr, 0x100)
 
-        // advance free memory pointer (optional here since it's pure, but good hygiene)
-        mstore(0x40, add(ptr, 0x100))
+            // advance free memory pointer (optional here since it's pure, but good hygiene)
+            mstore(0x40, add(ptr, 0x100))
+        }
     }
-}
-
 
     /// @notice Check if order is in the money (would fill at clearing)
     /// @param order The order
@@ -99,16 +98,12 @@ function orderKey(Order memory order) internal pure returns (bytes32 key) {
         if (!clearing.finalized) return false;
 
         if (order.flow == Flow.Taker) {
-
             return true;
         }
 
-
         if (order.side == Side.Buy) {
-
             return order.priceTick >= clearing.clearingTick;
         } else {
-
             return order.priceTick <= clearing.clearingTick;
         }
     }
@@ -121,16 +116,18 @@ function orderKey(Order memory order) internal pure returns (bytes32 key) {
         Order memory order,
         Clearing memory clearing,
         uint128 /* levelQty */
-    ) internal pure returns (uint128) {
+    )
+        internal
+        pure
+        returns (uint128)
+    {
         if (!inTheMoney(order, clearing)) return 0;
 
-
         bool isMarginal = (order.priceTick == clearing.clearingTick);
-        
+
         if (!isMarginal) {
             return order.qty;
         }
-
 
         uint256 fillBps;
         if (order.flow == Flow.Maker) {
@@ -139,10 +136,9 @@ function orderKey(Order memory order) internal pure returns (bytes32 key) {
             fillBps = clearing.marginalFillTakerBps;
         }
 
-        if (fillBps >= 10000) return order.qty;
+        if (fillBps >= 10_000) return order.qty;
 
-
-        uint256 filled = (uint256(order.qty) * fillBps) / 10000;
+        uint256 filled = (uint256(order.qty) * fillBps) / 10_000;
         return uint128(filled);
     }
 
@@ -160,7 +156,6 @@ function orderKey(Order memory order) internal pure returns (bytes32 key) {
 
     /// @notice Convert price to tick
     function priceToTick(uint256 price) internal pure returns (int24) {
-
         return int24(int256(price));
     }
 }

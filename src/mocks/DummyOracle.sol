@@ -64,13 +64,7 @@ contract DummyOracle {
     function latestRoundData()
         external
         view
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 timestamp,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 timestamp, uint80 answeredInRound)
     {
         return (
             1, // roundId

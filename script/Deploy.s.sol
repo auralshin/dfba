@@ -15,9 +15,10 @@ import {MockERC20} from "../test/AuctionHouse.t.sol";
 contract Deploy is Script {
     function run() external {
         // Use private key from environment or Anvil's default
-        uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerPrivateKey =
+            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
         address deployer = vm.addr(deployerPrivateKey);
-        
+
         console.log("Deploying with address:", deployer);
         console.log("Balance:", deployer.balance);
 
@@ -58,25 +59,18 @@ contract Deploy is Script {
         console.log("Router roles granted");
 
         // 8. Create a spot market (WETH/USDC)
-        uint64 spotMarketId = auctionHouse.createMarket(
-            OrderTypes.MarketType.Spot,
-            address(weth),
-            address(usdc)
-        );
+        uint64 spotMarketId = auctionHouse.createMarket(OrderTypes.MarketType.Spot, address(weth), address(usdc));
         console.log("Spot market created with ID:", spotMarketId);
 
         // 9. Create a perp market (ETH-PERP/USDC)
         uint64 perpMarketId = auctionHouse.createMarketWithOracle(
-            OrderTypes.MarketType.Perp,
-            address(weth),
-            address(usdc),
-            address(oracle)
+            OrderTypes.MarketType.Perp, address(weth), address(usdc), address(oracle)
         );
         console.log("Perp market created with ID:", perpMarketId);
 
         // 10. Mint tokens to deployer for testing
-        usdc.mint(deployer, 1_000_000 * 10**18); // 1M USDC (MockERC20 has 18 decimals)
-        weth.mint(deployer, 1000 * 10**18); // 1000 WETH
+        usdc.mint(deployer, 1_000_000 * 10 ** 18); // 1M USDC (MockERC20 has 18 decimals)
+        weth.mint(deployer, 1000 * 10 ** 18); // 1000 WETH
         console.log("Tokens minted to deployer");
 
         vm.stopBroadcast();

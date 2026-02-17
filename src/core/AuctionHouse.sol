@@ -23,8 +23,8 @@ contract AuctionHouse is AccessControl {
     // Demo uses 1 second for compatibility with Anvil's block.timestamp updates
     uint256 public constant BATCH_DURATION = 1;
     uint256 public constant MAX_TICKS_PER_FINALIZE = 100;
-    int24 public constant MIN_TICK = -887272;
-    int24 public constant MAX_TICK = 887272;
+    int24 public constant MIN_TICK = -887_272;
+    int24 public constant MAX_TICK = 887_272;
     uint256 public constant Q128 = uint256(1) << 128;
 
     /*//////////////////////////////////////////////////////////////
@@ -43,6 +43,7 @@ contract AuctionHouse is AccessControl {
     enum AuctionSide {
         Bid, // Maker-Buy vs Taker-Sell
         Ask // Maker-Sell vs Taker-Buy
+
     }
 
     /// @notice Finalize phase for incremental processing
@@ -130,16 +131,13 @@ contract AuctionHouse is AccessControl {
     mapping(uint64 => mapping(uint64 => FinalizeState)) public finalizeStates;
 
     /// @notice Discovery state: marketId => batchId => discovery
-    mapping(uint64 => mapping(uint64 => DiscoveryState))
-        internal discoveryStates;
+    mapping(uint64 => mapping(uint64 => DiscoveryState)) internal discoveryStates;
 
     /// @notice Bid consumption state
-    mapping(uint64 => mapping(uint64 => ConsumptionState))
-        internal bidConsumption;
+    mapping(uint64 => mapping(uint64 => ConsumptionState)) internal bidConsumption;
 
     /// @notice Ask consumption state
-    mapping(uint64 => mapping(uint64 => ConsumptionState))
-        internal askConsumption;
+    mapping(uint64 => mapping(uint64 => ConsumptionState)) internal askConsumption;
 
     /// @notice Orders: orderId => order
     mapping(bytes32 => OrderTypes.Order) public orders;
@@ -157,30 +155,15 @@ contract AuctionHouse is AccessControl {
     mapping(uint64 => address) public marketOracles;
 
     event MarketCreated(
-        uint64 indexed marketId,
-        OrderTypes.MarketType marketType,
-        address baseToken,
-        address quoteToken
+        uint64 indexed marketId, OrderTypes.MarketType marketType, address baseToken, address quoteToken
     );
     event MarketStatusUpdated(uint64 indexed marketId, bool active);
     event OracleSet(uint64 indexed marketId, address indexed oracle);
-    event OrderSubmitted(
-        bytes32 indexed orderId,
-        address indexed trader,
-        uint64 indexed marketId,
-        uint64 batchId
-    );
+    event OrderSubmitted(bytes32 indexed orderId, address indexed trader, uint64 indexed marketId, uint64 batchId);
     event OrderCancelled(bytes32 indexed orderId, address indexed trader);
-    event BatchFinalized(
-        uint64 indexed marketId,
-        uint64 indexed batchId,
-        AuctionSide side
-    );
+    event BatchFinalized(uint64 indexed marketId, uint64 indexed batchId, AuctionSide side);
     event FinalizeStepCompleted(
-        uint64 indexed marketId,
-        uint64 indexed batchId,
-        FinalizePhase phase,
-        uint256 ticksProcessed
+        uint64 indexed marketId, uint64 indexed batchId, FinalizePhase phase, uint256 ticksProcessed
     );
 
     constructor() {
@@ -195,14 +178,12 @@ contract AuctionHouse is AccessControl {
         OrderTypes.MarketType marketType,
         address baseToken,
         address quoteToken
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint64 marketId) {
-        return
-            createMarketWithOracle(
-                marketType,
-                baseToken,
-                quoteToken,
-                address(0)
-            );
+    )
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        returns (uint64 marketId)
+    {
+        return createMarketWithOracle(marketType, baseToken, quoteToken, address(0));
     }
 
     /// @notice Create market with oracle (for perps)
@@ -211,19 +192,17 @@ contract AuctionHouse is AccessControl {
         address baseToken,
         address quoteToken,
         address oracle
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) returns (uint64 marketId) {
+    )
+        public
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        returns (uint64 marketId)
+    {
         require(baseToken != address(0), "AuctionHouse: zero base token");
-        require(
-            _isContract(baseToken),
-            "AuctionHouse: base token not contract"
-        );
+        require(_isContract(baseToken), "AuctionHouse: base token not contract");
 
         if (marketType == OrderTypes.MarketType.Spot) {
             require(quoteToken != address(0), "AuctionHouse: zero quote token");
-            require(
-                _isContract(quoteToken),
-                "AuctionHouse: quote token not contract"
-            );
+            require(_isContract(quoteToken), "AuctionHouse: quote token not contract");
         }
 
         if (oracle != address(0)) {
@@ -231,12 +210,7 @@ contract AuctionHouse is AccessControl {
         }
 
         marketId = ++marketCount;
-        markets[marketId] = Market({
-            marketType: marketType,
-            baseToken: baseToken,
-            quoteToken: quoteToken,
-            active: true
-        });
+        markets[marketId] = Market({marketType: marketType, baseToken: baseToken, quoteToken: quoteToken, active: true});
 
         if (oracle != address(0)) {
             marketOracles[marketId] = oracle;
@@ -246,38 +220,22 @@ contract AuctionHouse is AccessControl {
         emit MarketCreated(marketId, marketType, baseToken, quoteToken);
     }
 
-    function grantRouterRole(
-        address account
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function grantRouterRole(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
         grantRole(ROUTER_ROLE, account);
     }
 
-    function revokeRouterRole(
-        address account
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function revokeRouterRole(address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(ROUTER_ROLE, account);
     }
 
-    function setMarketActive(
-        uint64 marketId,
-        bool active
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(
-            marketId > 0 && marketId <= marketCount,
-            "AuctionHouse: invalid market"
-        );
+    function setMarketActive(uint64 marketId, bool active) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(marketId > 0 && marketId <= marketCount, "AuctionHouse: invalid market");
         markets[marketId].active = active;
         emit MarketStatusUpdated(marketId, active);
     }
 
-    function setMarketOracle(
-        uint64 marketId,
-        address oracle
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(
-            marketId > 0 && marketId <= marketCount,
-            "AuctionHouse: invalid market"
-        );
+    function setMarketOracle(uint64 marketId, address oracle) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(marketId > 0 && marketId <= marketCount, "AuctionHouse: invalid market");
         if (oracle != address(0)) {
             require(_isContract(oracle), "AuctionHouse: oracle not contract");
         }
@@ -295,7 +253,7 @@ contract AuctionHouse is AccessControl {
 
     /// @notice Get current batch ID for a market (time-based, liveness-safe)
     /// @dev marketId is unused (kept for interface symmetry); batchId is global time-bucket.
-    function getBatchId(uint64 /*marketId*/) public view returns (uint64) {
+    function getBatchId(uint64 /*marketId*/ ) public view returns (uint64) {
         return uint64(block.timestamp / BATCH_DURATION);
     }
 
@@ -305,9 +263,11 @@ contract AuctionHouse is AccessControl {
     }
 
     /// @notice Submit an order (assigned to current time-batch)
-    function submitOrder(
-        OrderTypes.Order memory order
-    ) external onlyRole(ROUTER_ROLE) returns (bytes32 orderId, uint64 batchId) {
+    function submitOrder(OrderTypes.Order memory order)
+        external
+        onlyRole(ROUTER_ROLE)
+        returns (bytes32 orderId, uint64 batchId)
+    {
         Market storage market = markets[order.marketId];
         require(market.active, "AuctionHouse: market not active");
 
@@ -319,33 +279,17 @@ contract AuctionHouse is AccessControl {
             _autoFinalizePreviousBatch(order.marketId, batchId - 1);
         }
 
-        require(
-            block.timestamp < batchEnd,
-            "AuctionHouse: batch cutoff passed"
-        );
-        require(
-            order.expiry == 0 || order.expiry >= block.timestamp,
-            "AuctionHouse: expired"
-        );
+        require(block.timestamp < batchEnd, "AuctionHouse: batch cutoff passed");
+        require(order.expiry == 0 || order.expiry >= block.timestamp, "AuctionHouse: expired");
         require(order.qty > 0, "AuctionHouse: qty must be positive");
-        require(
-            order.priceTick >= MIN_TICK && order.priceTick <= MAX_TICK,
-            "AuctionHouse: tick out of range"
-        );
+        require(order.priceTick >= MIN_TICK && order.priceTick <= MAX_TICK, "AuctionHouse: tick out of range");
 
         orderId = OrderTypes.orderKey(order);
-        require(
-            orders[orderId].trader == address(0),
-            "AuctionHouse: duplicate order"
-        );
+        require(orders[orderId].trader == address(0), "AuctionHouse: duplicate order");
 
         orders[orderId] = order;
         orderBatches[orderId] = batchId;
-        orderStates[orderId] = OrderTypes.OrderState({
-            remainingQty: order.qty,
-            claimedQty: 0,
-            cancelled: false
-        });
+        orderStates[orderId] = OrderTypes.OrderState({remainingQty: order.qty, claimedQty: 0, cancelled: false});
 
         BatchAggregates storage agg = batchData[order.marketId][batchId];
         OrderTypes.TickLevel storage level = agg.tickLevels[order.priceTick];
@@ -353,35 +297,19 @@ contract AuctionHouse is AccessControl {
         // Update aggregates (MB/MS/TB/TS)
         if (order.flow == OrderTypes.Flow.Maker) {
             if (order.side == OrderTypes.Side.Buy) {
-                level.makerBuy = SafeCast.toUint128(
-                    uint256(level.makerBuy) + uint256(order.qty)
-                );
-                agg.totalMakerBuy = SafeCast.toUint128(
-                    uint256(agg.totalMakerBuy) + uint256(order.qty)
-                );
+                level.makerBuy = SafeCast.toUint128(uint256(level.makerBuy) + uint256(order.qty));
+                agg.totalMakerBuy = SafeCast.toUint128(uint256(agg.totalMakerBuy) + uint256(order.qty));
             } else {
-                level.makerSell = SafeCast.toUint128(
-                    uint256(level.makerSell) + uint256(order.qty)
-                );
-                agg.totalMakerSell = SafeCast.toUint128(
-                    uint256(agg.totalMakerSell) + uint256(order.qty)
-                );
+                level.makerSell = SafeCast.toUint128(uint256(level.makerSell) + uint256(order.qty));
+                agg.totalMakerSell = SafeCast.toUint128(uint256(agg.totalMakerSell) + uint256(order.qty));
             }
         } else {
             if (order.side == OrderTypes.Side.Buy) {
-                level.takerBuy = SafeCast.toUint128(
-                    uint256(level.takerBuy) + uint256(order.qty)
-                );
-                agg.totalTakerBuy = SafeCast.toUint128(
-                    uint256(agg.totalTakerBuy) + uint256(order.qty)
-                );
+                level.takerBuy = SafeCast.toUint128(uint256(level.takerBuy) + uint256(order.qty));
+                agg.totalTakerBuy = SafeCast.toUint128(uint256(agg.totalTakerBuy) + uint256(order.qty));
             } else {
-                level.takerSell = SafeCast.toUint128(
-                    uint256(level.takerSell) + uint256(order.qty)
-                );
-                agg.totalTakerSell = SafeCast.toUint128(
-                    uint256(agg.totalTakerSell) + uint256(order.qty)
-                );
+                level.takerSell = SafeCast.toUint128(uint256(level.takerSell) + uint256(order.qty));
+                agg.totalTakerSell = SafeCast.toUint128(uint256(agg.totalTakerSell) + uint256(order.qty));
             }
         }
 
@@ -391,10 +319,12 @@ contract AuctionHouse is AccessControl {
             agg.minActiveTick = order.priceTick;
             agg.maxActiveTick = order.priceTick;
         } else {
-            if (order.priceTick < agg.minActiveTick)
+            if (order.priceTick < agg.minActiveTick) {
                 agg.minActiveTick = order.priceTick;
-            if (order.priceTick > agg.maxActiveTick)
+            }
+            if (order.priceTick > agg.maxActiveTick) {
                 agg.maxActiveTick = order.priceTick;
+            }
         }
 
         agg.orderCount++;
@@ -406,10 +336,7 @@ contract AuctionHouse is AccessControl {
     function cancelOrder(bytes32 orderId) external {
         OrderTypes.Order storage order = orders[orderId];
         require(order.trader == msg.sender, "AuctionHouse: not order owner");
-        require(
-            order.flow == OrderTypes.Flow.Maker,
-            "AuctionHouse: only makers can cancel"
-        );
+        require(order.flow == OrderTypes.Flow.Maker, "AuctionHouse: only makers can cancel");
 
         OrderTypes.OrderState storage state = orderStates[orderId];
         require(!state.cancelled, "AuctionHouse: already cancelled");
@@ -417,14 +344,8 @@ contract AuctionHouse is AccessControl {
 
         uint64 orderBatchId = orderBatches[orderId];
         uint64 currentBatchId = getBatchId(order.marketId);
-        require(
-            orderBatchId == currentBatchId,
-            "AuctionHouse: can only cancel current batch"
-        );
-        require(
-            block.timestamp < getBatchEnd(order.marketId),
-            "AuctionHouse: batch cutoff passed"
-        );
+        require(orderBatchId == currentBatchId, "AuctionHouse: can only cancel current batch");
+        require(block.timestamp < getBatchEnd(order.marketId), "AuctionHouse: batch cutoff passed");
 
         BatchAggregates storage agg = batchData[order.marketId][orderBatchId];
         OrderTypes.TickLevel storage level = agg.tickLevels[order.priceTick];
@@ -433,19 +354,11 @@ contract AuctionHouse is AccessControl {
 
         // Update maker curves
         if (order.side == OrderTypes.Side.Buy) {
-            level.makerBuy = SafeCast.toUint128(
-                uint256(level.makerBuy) - uint256(remainingQty)
-            );
-            agg.totalMakerBuy = SafeCast.toUint128(
-                uint256(agg.totalMakerBuy) - uint256(remainingQty)
-            );
+            level.makerBuy = SafeCast.toUint128(uint256(level.makerBuy) - uint256(remainingQty));
+            agg.totalMakerBuy = SafeCast.toUint128(uint256(agg.totalMakerBuy) - uint256(remainingQty));
         } else {
-            level.makerSell = SafeCast.toUint128(
-                uint256(level.makerSell) - uint256(remainingQty)
-            );
-            agg.totalMakerSell = SafeCast.toUint128(
-                uint256(agg.totalMakerSell) - uint256(remainingQty)
-            );
+            level.makerSell = SafeCast.toUint128(uint256(level.makerSell) - uint256(remainingQty));
+            agg.totalMakerSell = SafeCast.toUint128(uint256(agg.totalMakerSell) - uint256(remainingQty));
         }
 
         if (agg.orderCount > 0) {
@@ -453,12 +366,7 @@ contract AuctionHouse is AccessControl {
         }
 
         // If tick is now empty, clear bitmap and update bounds
-        if (
-            level.makerBuy == 0 &&
-            level.makerSell == 0 &&
-            level.takerBuy == 0 &&
-            level.takerSell == 0
-        ) {
+        if (level.makerBuy == 0 && level.makerSell == 0 && level.takerBuy == 0 && level.takerSell == 0) {
             agg.tickBitmap.clearTick(order.priceTick);
 
             if (agg.orderCount == 0) {
@@ -466,17 +374,11 @@ contract AuctionHouse is AccessControl {
                 agg.maxActiveTick = 0;
             } else {
                 if (order.priceTick == agg.minActiveTick) {
-                    (int24 newMin, bool found) = agg.tickBitmap.nextActiveTick(
-                        order.priceTick + 1,
-                        agg.maxActiveTick
-                    );
+                    (int24 newMin, bool found) = agg.tickBitmap.nextActiveTick(order.priceTick + 1, agg.maxActiveTick);
                     agg.minActiveTick = found ? newMin : agg.maxActiveTick;
                 }
                 if (order.priceTick == agg.maxActiveTick) {
-                    (int24 newMax, bool found) = agg.tickBitmap.prevActiveTick(
-                        order.priceTick - 1,
-                        agg.minActiveTick
-                    );
+                    (int24 newMax, bool found) = agg.tickBitmap.prevActiveTick(order.priceTick - 1, agg.minActiveTick);
                     agg.maxActiveTick = found ? newMax : agg.minActiveTick;
                 }
             }
@@ -494,10 +396,7 @@ contract AuctionHouse is AccessControl {
 
     /// @notice Auto-finalize previous batches (called by submitOrder)
     /// @dev If trading stops, batches won't auto-finalize; keepers should call finalizeStep().
-    function _autoFinalizePreviousBatch(
-        uint64 marketId,
-        uint64 batchId
-    ) internal {
+    function _autoFinalizePreviousBatch(uint64 marketId, uint64 batchId) internal {
         uint64 currentBatchId = getBatchId(marketId);
         if (batchId >= currentBatchId) return;
 
@@ -505,23 +404,15 @@ contract AuctionHouse is AccessControl {
         uint64 oldestUnfinalized = batchId;
         uint256 maxBacklog = 10;
         for (uint256 i = 0; i < maxBacklog && oldestUnfinalized > 0; i++) {
-            FinalizeState storage prev = finalizeStates[marketId][
-                oldestUnfinalized - 1
-            ];
+            FinalizeState storage prev = finalizeStates[marketId][oldestUnfinalized - 1];
             if (prev.phase == FinalizePhase.Done) break;
             oldestUnfinalized--;
         }
 
         // Finalize up to 3 old batches per tx (bounded)
         uint256 maxBatches = 3;
-        for (
-            uint256 i = 0;
-            i < maxBatches && oldestUnfinalized <= batchId;
-            i++
-        ) {
-            FinalizeState storage st = finalizeStates[marketId][
-                oldestUnfinalized
-            ];
+        for (uint256 i = 0; i < maxBatches && oldestUnfinalized <= batchId; i++) {
+            FinalizeState storage st = finalizeStates[marketId][oldestUnfinalized];
             if (st.phase != FinalizePhase.Done) {
                 _executeFinalizeStep(marketId, oldestUnfinalized, 50);
             }
@@ -533,7 +424,10 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         uint256 maxSteps
-    ) internal returns (uint256 ticksProcessed) {
+    )
+        internal
+        returns (uint256 ticksProcessed)
+    {
         FinalizeState storage state = finalizeStates[marketId][batchId];
         if (state.phase == FinalizePhase.Done) return 0;
 
@@ -562,17 +456,11 @@ contract AuctionHouse is AccessControl {
         }
 
         if (state.phase == FinalizePhase.DiscoverBid) {
-            (bool bidDone, uint256 ticks) = _discoverBidClearing(
-                marketId,
-                batchId,
-                maxSteps
-            );
+            (bool bidDone, uint256 ticks) = _discoverBidClearing(marketId, batchId, maxSteps);
             ticksProcessed = ticks;
             if (bidDone) {
                 state.phase = FinalizePhase.ConsumeBidDemand;
-                ConsumptionState storage bidCon = bidConsumption[marketId][
-                    batchId
-                ];
+                ConsumptionState storage bidCon = bidConsumption[marketId][batchId];
                 bidCon.demandCursor = agg.maxActiveTick;
                 bidCon.demandRemaining = state.bidClearedQty;
             }
@@ -581,17 +469,11 @@ contract AuctionHouse is AccessControl {
                 state.phase = FinalizePhase.ConsumeBidSupply;
                 ticksProcessed = 0;
             } else {
-                (bool done, uint256 ticks) = _consumeBidDemand(
-                    marketId,
-                    batchId,
-                    maxSteps
-                );
+                (bool done, uint256 ticks) = _consumeBidDemand(marketId, batchId, maxSteps);
                 ticksProcessed = ticks;
                 if (done) {
                     state.phase = FinalizePhase.ConsumeBidSupply;
-                    ConsumptionState storage bidCon = bidConsumption[marketId][
-                        batchId
-                    ];
+                    ConsumptionState storage bidCon = bidConsumption[marketId][batchId];
                     bidCon.supplyCursor = agg.minActiveTick;
                     bidCon.supplyRemaining = state.bidClearedQty;
                 }
@@ -600,27 +482,19 @@ contract AuctionHouse is AccessControl {
             if (state.bidClearedQty == 0) {
                 state.phase = FinalizePhase.DiscoverAsk;
                 state.cursorTick = agg.minActiveTick;
-                DiscoveryState storage disc = discoveryStates[marketId][
-                    batchId
-                ];
+                DiscoveryState storage disc = discoveryStates[marketId][batchId];
                 disc.supplyPrefix = 0;
                 disc.demandBelow = 0;
                 disc.bestMatch = 0;
                 disc.bestTick = 0;
                 ticksProcessed = 0;
             } else {
-                (bool done, uint256 ticks) = _consumeBidSupply(
-                    marketId,
-                    batchId,
-                    maxSteps
-                );
+                (bool done, uint256 ticks) = _consumeBidSupply(marketId, batchId, maxSteps);
                 ticksProcessed = ticks;
                 if (done) {
                     state.phase = FinalizePhase.DiscoverAsk;
                     state.cursorTick = agg.minActiveTick;
-                    DiscoveryState storage disc = discoveryStates[marketId][
-                        batchId
-                    ];
+                    DiscoveryState storage disc = discoveryStates[marketId][batchId];
                     disc.supplyPrefix = 0;
                     disc.demandBelow = 0;
                     disc.bestMatch = 0;
@@ -628,17 +502,11 @@ contract AuctionHouse is AccessControl {
                 }
             }
         } else if (state.phase == FinalizePhase.DiscoverAsk) {
-            (bool askDone, uint256 ticks) = _discoverAskClearing(
-                marketId,
-                batchId,
-                maxSteps
-            );
+            (bool askDone, uint256 ticks) = _discoverAskClearing(marketId, batchId, maxSteps);
             ticksProcessed = ticks;
             if (askDone) {
                 state.phase = FinalizePhase.ConsumeAskSupply;
-                ConsumptionState storage askCon = askConsumption[marketId][
-                    batchId
-                ];
+                ConsumptionState storage askCon = askConsumption[marketId][batchId];
                 askCon.supplyCursor = agg.minActiveTick;
                 askCon.supplyRemaining = state.askClearedQty;
             }
@@ -647,17 +515,11 @@ contract AuctionHouse is AccessControl {
                 state.phase = FinalizePhase.ConsumeAskDemand;
                 ticksProcessed = 0;
             } else {
-                (bool done, uint256 ticks) = _consumeAskSupply(
-                    marketId,
-                    batchId,
-                    maxSteps
-                );
+                (bool done, uint256 ticks) = _consumeAskSupply(marketId, batchId, maxSteps);
                 ticksProcessed = ticks;
                 if (done) {
                     state.phase = FinalizePhase.ConsumeAskDemand;
-                    ConsumptionState storage askCon = askConsumption[marketId][
-                        batchId
-                    ];
+                    ConsumptionState storage askCon = askConsumption[marketId][batchId];
                     askCon.demandCursor = agg.maxActiveTick;
                     askCon.demandRemaining = state.askClearedQty;
                 }
@@ -668,11 +530,7 @@ contract AuctionHouse is AccessControl {
                 _finalizeBatch(marketId, batchId);
                 ticksProcessed = 0;
             } else {
-                (bool done, uint256 ticks) = _consumeAskDemand(
-                    marketId,
-                    batchId,
-                    maxSteps
-                );
+                (bool done, uint256 ticks) = _consumeAskDemand(marketId, batchId, maxSteps);
                 ticksProcessed = ticks;
                 if (done) {
                     state.phase = FinalizePhase.Done;
@@ -688,42 +546,26 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         uint256 maxSteps
-    ) external returns (FinalizePhase phase, bool done) {
-        require(
-            marketId > 0 && marketId <= marketCount,
-            "AuctionHouse: market does not exist"
-        );
+    )
+        external
+        returns (FinalizePhase phase, bool done)
+    {
+        require(marketId > 0 && marketId <= marketCount, "AuctionHouse: market does not exist");
 
         uint64 currentBatchId = getBatchId(marketId);
         require(batchId < currentBatchId, "AuctionHouse: batch not ended");
 
         FinalizeState storage state = finalizeStates[marketId][batchId];
-        require(
-            state.phase != FinalizePhase.Done,
-            "AuctionHouse: already finalized"
-        );
+        require(state.phase != FinalizePhase.Done, "AuctionHouse: already finalized");
 
-        uint256 ticksProcessed = _executeFinalizeStep(
-            marketId,
-            batchId,
-            maxSteps
-        );
+        uint256 ticksProcessed = _executeFinalizeStep(marketId, batchId, maxSteps);
 
-        emit FinalizeStepCompleted(
-            marketId,
-            batchId,
-            state.phase,
-            ticksProcessed
-        );
+        emit FinalizeStepCompleted(marketId, batchId, state.phase, ticksProcessed);
         return (state.phase, state.phase == FinalizePhase.Done);
     }
 
     /// @dev When no liquidity: sets clearingTick = MIN_TICK (sentinel), clearedQty = 0
-    function _discoverBidClearing(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _discoverBidClearing(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         DiscoveryState storage disc = discoveryStates[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -744,32 +586,21 @@ contract AuctionHouse is AccessControl {
                 uint256 supplyAt = uint256(lvl.takerSell);
                 uint256 demandAt = uint256(lvl.makerBuy);
 
-                uint256 demandAtOrAbove = totalDemand -
-                    uint256(disc.demandBelow);
+                uint256 demandAtOrAbove = totalDemand - uint256(disc.demandBelow);
 
-                disc.supplyPrefix = uint128(
-                    uint256(disc.supplyPrefix) + supplyAt
-                );
+                disc.supplyPrefix = uint128(uint256(disc.supplyPrefix) + supplyAt);
 
-                uint256 matchQty = Math.min(
-                    uint256(disc.supplyPrefix),
-                    demandAtOrAbove
-                );
+                uint256 matchQty = Math.min(uint256(disc.supplyPrefix), demandAtOrAbove);
                 if (matchQty > disc.bestMatch) {
                     disc.bestMatch = uint128(matchQty);
                     disc.bestTick = tick;
                 }
 
-                disc.demandBelow = uint128(
-                    uint256(disc.demandBelow) + demandAt
-                );
+                disc.demandBelow = uint128(uint256(disc.demandBelow) + demandAt);
                 steps++;
             }
 
-            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(
-                tick + 1,
-                agg.maxActiveTick
-            );
+            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(tick + 1, agg.maxActiveTick);
             if (!found) {
                 st.cursorTick = tick;
                 st.bidClearingTick = disc.bestTick;
@@ -784,11 +615,7 @@ contract AuctionHouse is AccessControl {
     }
 
     /// @dev When no liquidity: sets clearingTick = MAX_TICK (sentinel), clearedQty = 0
-    function _discoverAskClearing(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _discoverAskClearing(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         DiscoveryState storage disc = discoveryStates[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -809,35 +636,21 @@ contract AuctionHouse is AccessControl {
                 uint256 supplyAt = uint256(lvl.makerSell);
                 uint256 demandAt = uint256(lvl.takerBuy);
 
-                uint256 demandAtOrAbove = totalDemand -
-                    uint256(disc.demandBelow);
+                uint256 demandAtOrAbove = totalDemand - uint256(disc.demandBelow);
 
-                disc.supplyPrefix = uint128(
-                    uint256(disc.supplyPrefix) + supplyAt
-                );
+                disc.supplyPrefix = uint128(uint256(disc.supplyPrefix) + supplyAt);
 
-                uint256 matchQty = Math.min(
-                    uint256(disc.supplyPrefix),
-                    demandAtOrAbove
-                );
-                if (
-                    matchQty > disc.bestMatch ||
-                    (matchQty == disc.bestMatch && tick < disc.bestTick)
-                ) {
+                uint256 matchQty = Math.min(uint256(disc.supplyPrefix), demandAtOrAbove);
+                if (matchQty > disc.bestMatch || (matchQty == disc.bestMatch && tick < disc.bestTick)) {
                     disc.bestMatch = uint128(matchQty);
                     disc.bestTick = tick;
                 }
 
-                disc.demandBelow = uint128(
-                    uint256(disc.demandBelow) + demandAt
-                );
+                disc.demandBelow = uint128(uint256(disc.demandBelow) + demandAt);
                 steps++;
             }
 
-            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(
-                tick + 1,
-                agg.maxActiveTick
-            );
+            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(tick + 1, agg.maxActiveTick);
             if (!found) {
                 st.cursorTick = tick;
                 st.askClearingTick = disc.bestTick;
@@ -851,11 +664,7 @@ contract AuctionHouse is AccessControl {
         return (false, steps);
     }
 
-    function _consumeBidDemand(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _consumeBidDemand(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         ConsumptionState storage con = bidConsumption[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -875,9 +684,7 @@ contract AuctionHouse is AccessControl {
 
                 uint256 qty = uint256(lvl.makerBuy);
                 if (qty > 0 && remaining > 0) {
-                    uint256 exec = (tick == clear)
-                        ? remaining
-                        : Math.min(qty, remaining);
+                    uint256 exec = (tick == clear) ? remaining : Math.min(qty, remaining);
                     uint256 frac = (exec == qty) ? Q128 : (exec * Q128) / qty;
                     sh.mbFillX128 = frac;
                     remaining -= exec;
@@ -886,10 +693,7 @@ contract AuctionHouse is AccessControl {
             }
 
             if (tick == clear) break;
-            (int24 prevTick, bool found) = agg.tickBitmap.prevActiveTick(
-                tick - 1,
-                clear
-            );
+            (int24 prevTick, bool found) = agg.tickBitmap.prevActiveTick(tick - 1, clear);
             if (!found) break;
             tick = prevTick;
         }
@@ -899,11 +703,7 @@ contract AuctionHouse is AccessControl {
         return (tick == clear, steps);
     }
 
-    function _consumeBidSupply(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _consumeBidSupply(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         ConsumptionState storage con = bidConsumption[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -922,9 +722,7 @@ contract AuctionHouse is AccessControl {
 
                 uint256 qty = uint256(lvl.takerSell);
                 if (qty > 0 && remaining > 0) {
-                    uint256 exec = (tick == clear)
-                        ? remaining
-                        : Math.min(qty, remaining);
+                    uint256 exec = (tick == clear) ? remaining : Math.min(qty, remaining);
                     uint256 frac = (exec == qty) ? Q128 : (exec * Q128) / qty;
                     sh.tsFillX128 = frac;
                     remaining -= exec;
@@ -933,10 +731,7 @@ contract AuctionHouse is AccessControl {
             }
 
             if (tick == clear) break;
-            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(
-                tick + 1,
-                clear
-            );
+            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(tick + 1, clear);
             if (!found) break;
             tick = nextTick;
         }
@@ -946,11 +741,7 @@ contract AuctionHouse is AccessControl {
         return (tick == clear, steps);
     }
 
-    function _consumeAskSupply(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _consumeAskSupply(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         ConsumptionState storage con = askConsumption[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -969,9 +760,7 @@ contract AuctionHouse is AccessControl {
 
                 uint256 qty = uint256(lvl.makerSell);
                 if (qty > 0 && remaining > 0) {
-                    uint256 exec = (tick == clear)
-                        ? remaining
-                        : Math.min(qty, remaining);
+                    uint256 exec = (tick == clear) ? remaining : Math.min(qty, remaining);
                     uint256 frac = (exec == qty) ? Q128 : (exec * Q128) / qty;
                     sh.msFillX128 = frac;
                     remaining -= exec;
@@ -980,10 +769,7 @@ contract AuctionHouse is AccessControl {
             }
 
             if (tick == clear) break;
-            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(
-                tick + 1,
-                clear
-            );
+            (int24 nextTick, bool found) = agg.tickBitmap.nextActiveTick(tick + 1, clear);
             if (!found) break;
             tick = nextTick;
         }
@@ -993,11 +779,7 @@ contract AuctionHouse is AccessControl {
         return (tick == clear, steps);
     }
 
-    function _consumeAskDemand(
-        uint64 marketId,
-        uint64 batchId,
-        uint256 maxSteps
-    ) internal returns (bool, uint256) {
+    function _consumeAskDemand(uint64 marketId, uint64 batchId, uint256 maxSteps) internal returns (bool, uint256) {
         FinalizeState storage st = finalizeStates[marketId][batchId];
         ConsumptionState storage con = askConsumption[marketId][batchId];
         BatchAggregates storage agg = batchData[marketId][batchId];
@@ -1016,9 +798,7 @@ contract AuctionHouse is AccessControl {
 
                 uint256 qty = uint256(lvl.takerBuy);
                 if (qty > 0 && remaining > 0) {
-                    uint256 exec = (tick == clear)
-                        ? remaining
-                        : Math.min(qty, remaining);
+                    uint256 exec = (tick == clear) ? remaining : Math.min(qty, remaining);
                     uint256 frac = (exec == qty) ? Q128 : (exec * Q128) / qty;
                     sh.tbFillX128 = frac;
                     remaining -= exec;
@@ -1027,10 +807,7 @@ contract AuctionHouse is AccessControl {
             }
 
             if (tick == clear) break;
-            (int24 prevTick, bool found) = agg.tickBitmap.prevActiveTick(
-                tick - 1,
-                clear
-            );
+            (int24 prevTick, bool found) = agg.tickBitmap.prevActiveTick(tick - 1, clear);
             if (!found) break;
             tick = prevTick;
         }
@@ -1079,22 +856,13 @@ contract AuctionHouse is AccessControl {
     )
         external
         view
-        returns (
-            OrderTypes.Clearing memory bidClearing,
-            OrderTypes.Clearing memory askClearing
-        )
+        returns (OrderTypes.Clearing memory bidClearing, OrderTypes.Clearing memory askClearing)
     {
         AuctionState storage batch = historicalBatches[marketId][batchId];
         return (batch.bidClearing, batch.askClearing);
     }
 
-    function getOrder(
-        bytes32 orderId
-    )
-        external
-        view
-        returns (OrderTypes.Order memory, OrderTypes.OrderState memory)
-    {
+    function getOrder(bytes32 orderId) external view returns (OrderTypes.Order memory, OrderTypes.OrderState memory) {
         return (orders[orderId], orderStates[orderId]);
     }
 
@@ -1102,13 +870,15 @@ contract AuctionHouse is AccessControl {
         uint64 marketId,
         uint64 batchId,
         int24 tick
-    ) external view returns (OrderTypes.TickLevel memory) {
+    )
+        external
+        view
+        returns (OrderTypes.TickLevel memory)
+    {
         return batchData[marketId][batchId].tickLevels[tick];
     }
 
-    function getOrderFilledQty(
-        bytes32 orderId
-    ) external view returns (uint128 filledQty) {
+    function getOrderFilledQty(bytes32 orderId) external view returns (uint128 filledQty) {
         OrderTypes.Order storage order = orders[orderId];
         if (order.trader == address(0)) return 0;
 
@@ -1121,13 +891,9 @@ contract AuctionHouse is AccessControl {
 
         uint256 fillX128;
         if (order.flow == OrderTypes.Flow.Maker) {
-            fillX128 = (order.side == OrderTypes.Side.Buy)
-                ? sh.mbFillX128
-                : sh.msFillX128;
+            fillX128 = (order.side == OrderTypes.Side.Buy) ? sh.mbFillX128 : sh.msFillX128;
         } else {
-            fillX128 = (order.side == OrderTypes.Side.Buy)
-                ? sh.tbFillX128
-                : sh.tsFillX128;
+            fillX128 = (order.side == OrderTypes.Side.Buy) ? sh.tbFillX128 : sh.tsFillX128;
         }
 
         uint256 filled = (uint256(order.qty) * fillX128) >> 128;
@@ -1138,7 +904,10 @@ contract AuctionHouse is AccessControl {
         bytes32 orderId,
         uint128 claimedQty,
         uint128 remainingQty
-    ) external onlyRole(ROUTER_ROLE) {
+    )
+        external
+        onlyRole(ROUTER_ROLE)
+    {
         OrderTypes.OrderState storage state = orderStates[orderId];
         state.claimedQty = claimedQty;
         state.remainingQty = remainingQty;

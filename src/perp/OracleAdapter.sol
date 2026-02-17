@@ -76,26 +76,17 @@ contract OracleAdapter {
     /// @dev Uses external oracle or cached price
     function getIndexPrice(uint64 marketId) external view returns (uint256) {
         address oracle = oracles[marketId];
-        
+
         if (oracle != address(0)) {
-
-
             try IOracleSource(oracle).getPrice(marketId) returns (uint256 oraclePrice) {
                 return oraclePrice;
-            } catch {
-
-            }
+            } catch {}
         }
-
 
         uint256 price = cachedPrices[marketId];
         require(price > 0, "OracleAdapter: no price");
-        
 
-        require(
-            block.timestamp - lastUpdate[marketId] <= STALENESS_THRESHOLD,
-            "OracleAdapter: stale price"
-        );
+        require(block.timestamp - lastUpdate[marketId] <= STALENESS_THRESHOLD, "OracleAdapter: stale price");
 
         return price;
     }

@@ -19,7 +19,7 @@ contract PlaceOrders is Script {
         // Use deployer's private key from environment
         uint256 traderPrivateKey = vm.envUint("PRIVATE_KEY");
         address trader = vm.addr(traderPrivateKey);
-        
+
         // Contract addresses from environment
         address auctionHouseAddr = vm.envAddress("AUCTION_HOUSE_ADDRESS");
         address usdcAddr = vm.envAddress("USDC_ADDRESS");
@@ -38,11 +38,11 @@ contract PlaceOrders is Script {
 
         // 1. Mint tokens to trader if needed
         if (usdc.balanceOf(trader) == 0) {
-            usdc.mint(trader, 100_000 * 10**18); // 100k USDC
+            usdc.mint(trader, 100_000 * 10 ** 18); // 100k USDC
             console2.log("Minted 100k USDC to trader");
         }
         if (weth.balanceOf(trader) == 0) {
-            weth.mint(trader, 50 * 10**18); // 50 WETH
+            weth.mint(trader, 50 * 10 ** 18); // 50 WETH
             console2.log("Minted 50 WETH to trader");
         }
 
@@ -61,7 +61,7 @@ contract PlaceOrders is Script {
 
         // 4. Grant trader ROUTER_ROLE if not already granted
         vm.stopBroadcast();
-        
+
         // Use deployer to grant role (skip if already has role)
         bytes32 ROUTER_ROLE = keccak256("ROUTER_ROLE");
         if (!auctionHouse.hasRole(ROUTER_ROLE, trader)) {
@@ -85,7 +85,7 @@ contract PlaceOrders is Script {
             side: OrderTypes.Side.Buy,
             flow: OrderTypes.Flow.Maker,
             priceTick: 3000,
-            qty: 5 * 10**18, // Buy 5 WETH
+            qty: 5 * 10 ** 18, // Buy 5 WETH
             nonce: 1,
             expiry: uint64(block.timestamp + 1 hours)
         });
@@ -103,11 +103,11 @@ contract PlaceOrders is Script {
             side: OrderTypes.Side.Sell,
             flow: OrderTypes.Flow.Maker,
             priceTick: 3010,
-            qty: 3 * 10**18, // Sell 3 WETH
+            qty: 3 * 10 ** 18, // Sell 3 WETH
             nonce: 2,
             expiry: uint64(block.timestamp + 1 hours)
         });
-        (bytes32 orderId2, ) = auctionHouse.submitOrder(makerSell);
+        (bytes32 orderId2,) = auctionHouse.submitOrder(makerSell);
         console2.log("Maker Sell order submitted:");
         console2.log("  Order ID:", vm.toString(orderId2));
         console2.log("  Price: 3010");
@@ -120,11 +120,11 @@ contract PlaceOrders is Script {
             side: OrderTypes.Side.Buy,
             flow: OrderTypes.Flow.Taker,
             priceTick: 3020, // Max price willing to pay
-            qty: 2 * 10**18, // Buy 2 WETH
+            qty: 2 * 10 ** 18, // Buy 2 WETH
             nonce: 3,
             expiry: uint64(block.timestamp + 1 hours)
         });
-        (bytes32 orderId3, ) = auctionHouse.submitOrder(takerBuy);
+        (bytes32 orderId3,) = auctionHouse.submitOrder(takerBuy);
         console2.log("Taker Buy order submitted:");
         console2.log("  Order ID:", vm.toString(orderId3));
         console2.log("  Price: 3020");
@@ -137,11 +137,11 @@ contract PlaceOrders is Script {
             side: OrderTypes.Side.Sell,
             flow: OrderTypes.Flow.Taker,
             priceTick: 2990, // Min price willing to accept
-            qty: 1 * 10**18, // Sell 1 WETH
+            qty: 1 * 10 ** 18, // Sell 1 WETH
             nonce: 4,
             expiry: uint64(block.timestamp + 1 hours)
         });
-        (bytes32 orderId4, ) = auctionHouse.submitOrder(takerSell);
+        (bytes32 orderId4,) = auctionHouse.submitOrder(takerSell);
         console2.log("Taker Sell order submitted:");
         console2.log("  Order ID:", vm.toString(orderId4));
         console2.log("  Price: 2990");

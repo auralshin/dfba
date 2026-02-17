@@ -39,11 +39,7 @@ library TickBitmap {
     /// @param self The mapping storing the bitmap
     /// @param tick The tick to check
     /// @return True if tick is active
-    function isTickActive(mapping(int16 => uint256) storage self, int24 tick)
-        internal
-        view
-        returns (bool)
-    {
+    function isTickActive(mapping(int16 => uint256) storage self, int24 tick) internal view returns (bool) {
         (int16 wordPos, uint8 bitPos) = position(tick);
         return (self[wordPos] & (ONE << bitPos)) != 0;
     }
@@ -58,23 +54,24 @@ library TickBitmap {
         mapping(int16 => uint256) storage self,
         int24 tick,
         int24 maxTick
-    ) internal view returns (int24 next, bool found) {
+    )
+        internal
+        view
+        returns (int24 next, bool found)
+    {
         if (tick > maxTick) return (0, false);
 
         (int16 wordPos, uint8 bitPos) = position(tick);
-
 
         uint256 word = self[wordPos];
         uint256 mask = ~((ONE << uint256(bitPos)) - ONE); // Safety cast to prevent overflow
         uint256 masked = word & mask;
 
         if (masked != 0) {
-
             uint8 bit = leastSignificantBit(masked);
             next = (int24(wordPos) << 8) | int24(uint24(bit));
             return (next, next <= maxTick);
         }
-
 
         int16 maxWordPos = int16(maxTick >> 8);
         for (int16 wp = wordPos + 1; wp <= maxWordPos; wp++) {
@@ -99,7 +96,11 @@ library TickBitmap {
         mapping(int16 => uint256) storage self,
         int24 tick,
         int24 minTick
-    ) internal view returns (int24 prev, bool found) {
+    )
+        internal
+        view
+        returns (int24 prev, bool found)
+    {
         if (tick < minTick) return (0, false);
 
         (int16 wordPos, uint8 bitPos) = position(tick);
@@ -116,12 +117,10 @@ library TickBitmap {
         uint256 masked = word & mask;
 
         if (masked != 0) {
-
             uint8 bit = mostSignificantBit(masked);
             prev = (int24(wordPos) << 8) | int24(uint24(bit));
             return (prev, prev >= minTick);
         }
-
 
         int16 minWordPos = int16(minTick >> 8);
         for (int16 wp = wordPos - 1; wp >= minWordPos; wp--) {
@@ -141,14 +140,14 @@ library TickBitmap {
     /// @return r The bit position (0-255)
     function leastSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
-        
+
         // Find the position of the least significant bit set to 1
         // This is equivalent to finding the number of trailing zeros
         // We use the fact that (x & -x) isolates the LSB
-        
+
         // Isolate the least significant bit
         uint256 isolated = x & (~x + 1);
-        
+
         // Use OZ Math.log2 to find its position (MSB of isolated LSB is the LSB position)
         return uint8(Math.log2(isolated));
     }
@@ -158,7 +157,7 @@ library TickBitmap {
     /// @return r The bit position (0-255)
     function mostSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x != 0, "TickBitmap: zero word");
-        
+
         // OpenZeppelin's log2 gives us the MSB position directly
         return uint8(Math.log2(x));
     }

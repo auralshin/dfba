@@ -6,7 +6,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 /// @title DFBAMath
 /// @notice Domain-specific math utilities for DFBA not covered by OpenZeppelin
 library DFBAMath {
-    uint256 internal constant BPS = 10000;
+    uint256 internal constant BPS = 10_000;
     uint256 internal constant WAD = 1e18;
     uint256 internal constant RAY = 1e27;
 
@@ -31,7 +31,11 @@ library DFBAMath {
         uint256 qty1,
         uint256 price2,
         uint256 qty2
-    ) internal pure returns (uint256) {
+    )
+        internal
+        pure
+        returns (uint256)
+    {
         uint256 totalQty = qty1 + qty2;
         if (totalQty == 0) return 0;
         return (price1 * qty1 + price2 * qty2) / totalQty;

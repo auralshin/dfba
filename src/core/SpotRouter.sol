@@ -66,7 +66,7 @@ contract SpotRouter is EIP712, AccessControl {
     constructor(address vault, address auctionHouse) EIP712("SpotRouter", "1") {
         VAULT = CoreVault(vault);
         AUCTION_HOUSE = AuctionHouse(auctionHouse);
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(SETTLEMENT_ROLE, auctionHouse);
     }
@@ -81,7 +81,7 @@ contract SpotRouter is EIP712, AccessControl {
     function submitOrder(OrderTypes.Order memory order) external returns (bytes32 orderId, uint64 batchId) {
         // Authenticate: msg.sender must be trader
         require(order.trader == msg.sender, "SpotRouter: unauthorized");
-        
+
         (orderId, batchId) = _submitOrderInternal(order);
         return (orderId, batchId);
     }
@@ -96,21 +96,24 @@ contract SpotRouter is EIP712, AccessControl {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (bytes32 orderId, uint64 batchId) {
+    )
+        external
+        returns (bytes32 orderId, uint64 batchId)
+    {
         // Verify EIP-712 signature using OpenZeppelin
         bytes32 structHash;
         bytes32 typeHash = ORDER_TYPEHASH;
         assembly {
             let ptr := mload(0x40)
             mstore(ptr, typeHash)
-            mstore(add(ptr, 0x20), mload(order))              // trader
-            mstore(add(ptr, 0x40), mload(add(order, 0x20)))   // marketId
-            mstore(add(ptr, 0x60), mload(add(order, 0x40)))   // side
-            mstore(add(ptr, 0x80), mload(add(order, 0x60)))   // flow
-            mstore(add(ptr, 0xa0), mload(add(order, 0x80)))   // priceTick
-            mstore(add(ptr, 0xc0), mload(add(order, 0xa0)))   // qty
-            mstore(add(ptr, 0xe0), mload(add(order, 0xc0)))   // nonce
-            mstore(add(ptr, 0x100), mload(add(order, 0xe0)))  // expiry
+            mstore(add(ptr, 0x20), mload(order)) // trader
+            mstore(add(ptr, 0x40), mload(add(order, 0x20))) // marketId
+            mstore(add(ptr, 0x60), mload(add(order, 0x40))) // side
+            mstore(add(ptr, 0x80), mload(add(order, 0x60))) // flow
+            mstore(add(ptr, 0xa0), mload(add(order, 0x80))) // priceTick
+            mstore(add(ptr, 0xc0), mload(add(order, 0xa0))) // qty
+            mstore(add(ptr, 0xe0), mload(add(order, 0xc0))) // nonce
+            mstore(add(ptr, 0x100), mload(add(order, 0xe0))) // expiry
             structHash := keccak256(ptr, 0x120)
         }
 
@@ -125,17 +128,13 @@ contract SpotRouter is EIP712, AccessControl {
     /// @notice Internal order submission with escrow locking
     function _submitOrderInternal(OrderTypes.Order memory order) internal returns (bytes32 orderId, uint64 batchId) {
         // Get market info
-        (OrderTypes.MarketType marketType, address baseToken, address quoteToken,) = 
+        (OrderTypes.MarketType marketType, address baseToken, address quoteToken,) =
             AUCTION_HOUSE.markets(order.marketId);
-        
+
         require(marketType == OrderTypes.MarketType.Spot, "SpotRouter: not spot market");
 
         // Calculate escrow requirements
-        (uint128 baseEscrow, uint128 quoteEscrow) = _calculateEscrow(
-            order,
-            baseToken,
-            quoteToken
-        );
+        (uint128 baseEscrow, uint128 quoteEscrow) = _calculateEscrow(order, baseToken, quoteToken);
 
         // Lock escrow from user's vault balance
         if (baseEscrow > 0) {
@@ -159,24 +158,14 @@ contract SpotRouter is EIP712, AccessControl {
                 VAULT.balances(order.trader, DEFAULT_SUBACCOUNT, quoteToken) >= quoteEscrow,
                 "SpotRouter: insufficient quote"
             );
-            VAULT.move(
-                quoteToken,
-                order.trader,
-                DEFAULT_SUBACCOUNT,
-                address(this),
-                0,
-                quoteEscrow
-            );
+            VAULT.move(quoteToken, order.trader, DEFAULT_SUBACCOUNT, address(this), 0, quoteEscrow);
             VAULT.lockSpotEscrow(order.marketId, quoteToken, quoteEscrow);
         }
-        
+
         (orderId, batchId) = AUCTION_HOUSE.submitOrder(order);
 
         // Track escrow
-        escrowLocks[orderId] = EscrowLock({
-            baseAmount: baseEscrow,
-            quoteAmount: quoteEscrow
-        });
+        escrowLocks[orderId] = EscrowLock({baseAmount: baseEscrow, quoteAmount: quoteEscrow});
 
         emit SpotOrderSubmitted(orderId, order.trader, order.marketId, baseEscrow, quoteEscrow);
     }
@@ -192,7 +181,11 @@ contract SpotRouter is EIP712, AccessControl {
         OrderTypes.Order memory order,
         address baseToken,
         address quoteToken
-    ) internal pure returns (uint128 baseEscrow, uint128 quoteEscrow) {
+    )
+        internal
+        pure
+        returns (uint128 baseEscrow, uint128 quoteEscrow)
+    {
         // CRITICAL FIX: Use proper tick-to-price conversion (WAD precision: 1e18)
         uint256 price = OrderTypes.tickToPrice(order.priceTick);
 
@@ -200,7 +193,7 @@ contract SpotRouter is EIP712, AccessControl {
             // Buy order: lock quote amount + fee buffer (round up for safety)
             // quoteNeeded = qty * price * (1 + feeBps/10000)
             uint256 quoteBase = (uint256(order.qty) * price) / 1e18;
-            uint256 feeBuffer = (quoteBase * FEE_BUFFER_BPS) / 10000;
+            uint256 feeBuffer = (quoteBase * FEE_BUFFER_BPS) / 10_000;
             quoteEscrow = uint128(quoteBase + feeBuffer);
             baseEscrow = 0;
         } else {
@@ -218,7 +211,6 @@ contract SpotRouter is EIP712, AccessControl {
     /// @param orderId The order ID
     /// @dev CRITICAL: Only authorized settlement contracts can release
     function releaseEscrow(bytes32 orderId) external onlyRole(SETTLEMENT_ROLE) {
-        
         EscrowLock memory lock = escrowLocks[orderId];
         require(lock.baseAmount > 0 || lock.quoteAmount > 0, "SpotRouter: no escrow");
 
@@ -227,31 +219,17 @@ contract SpotRouter is EIP712, AccessControl {
         require(state.cancelled || state.remainingQty == 0, "SpotRouter: order not terminal");
 
         (OrderTypes.Order memory order,) = AUCTION_HOUSE.getOrder(orderId);
-        (,address baseToken, address quoteToken,) = AUCTION_HOUSE.markets(order.marketId);
+        (, address baseToken, address quoteToken,) = AUCTION_HOUSE.markets(order.marketId);
 
         // Release from escrow back to user
         if (lock.baseAmount > 0) {
             VAULT.releaseSpotEscrow(order.marketId, baseToken, lock.baseAmount);
-            VAULT.move(
-                baseToken,
-                address(this),
-                0,
-                order.trader,
-                DEFAULT_SUBACCOUNT,
-                lock.baseAmount
-            );
+            VAULT.move(baseToken, address(this), 0, order.trader, DEFAULT_SUBACCOUNT, lock.baseAmount);
         }
 
         if (lock.quoteAmount > 0) {
             VAULT.releaseSpotEscrow(order.marketId, quoteToken, lock.quoteAmount);
-            VAULT.move(
-                quoteToken,
-                address(this),
-                0,
-                order.trader,
-                DEFAULT_SUBACCOUNT,
-                lock.quoteAmount
-            );
+            VAULT.move(quoteToken, address(this), 0, order.trader, DEFAULT_SUBACCOUNT, lock.quoteAmount);
         }
 
         delete escrowLocks[orderId];
