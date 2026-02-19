@@ -30,6 +30,9 @@ contract CoreVault {
     /// @notice Locked margin backing open perp positions: user => subaccountId => token => amount
     mapping(address => mapping(uint256 => mapping(address => uint256))) public positionMargin;
 
+    /// @notice Accrued bad debt: user => subaccountId => token => amount
+    mapping(address => mapping(uint256 => mapping(address => uint256))) public badDebt;
+
     /// @notice Authorized movers (routers, settlement contracts)
     mapping(address => bool) public authorized;
 
@@ -63,6 +66,9 @@ contract CoreVault {
     event PositionMarginLocked(address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount);
     event PositionMarginReleased(
         address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount
+    );
+    event PnlApplied(
+        address indexed user, uint256 indexed subaccountId, address indexed token, int256 pnl, uint256 badDebt
     );
     event CollateralAdded(address indexed token);
     event CollateralRemoved(address indexed token);
@@ -305,6 +311,39 @@ contract CoreVault {
         require(positionMargin[user][subaccountId][token] >= amount, "CoreVault: insufficient position margin");
         positionMargin[user][subaccountId][token] -= amount;
         emit PositionMarginReleased(user, subaccountId, token, amount);
+    }
+
+    /// @notice Apply realized PnL to a user's balance (PerpRouter only)
+    /// @param user The user address
+    /// @param subaccountId The subaccount ID
+    /// @param token The collateral token
+    /// @param pnl The realized PnL (positive or negative)
+    function applyPnl(
+        address user,
+        uint256 subaccountId,
+        address token,
+        int256 pnl
+    ) external onlyAuthorized {
+        if (pnl == 0) return;
+
+        if (pnl > 0) {
+            balances[user][subaccountId][token] += uint256(pnl);
+            emit PnlApplied(user, subaccountId, token, pnl, 0);
+            return;
+        }
+
+        uint256 loss = uint256(-pnl);
+        uint256 balance = balances[user][subaccountId][token];
+        if (balance >= loss) {
+            balances[user][subaccountId][token] = balance - loss;
+            emit PnlApplied(user, subaccountId, token, pnl, 0);
+            return;
+        }
+
+        uint256 deficit = loss - balance;
+        balances[user][subaccountId][token] = 0;
+        badDebt[user][subaccountId][token] += deficit;
+        emit PnlApplied(user, subaccountId, token, pnl, deficit);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -210,14 +210,30 @@ contract SpotRouter is EIP712, AccessControl {
     function releaseEscrow(
         bytes32 orderId
     ) external onlyRole(SETTLEMENT_ROLE) {
+        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
+        _releaseEscrow(orderId, order, state);
+    }
+
+    /// @notice Release escrow after order cancelled/filled (trader-accessible)
+    /// @param orderId The order ID
+    function releaseEscrowForTrader(
+        bytes32 orderId
+    ) external {
+        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
+        require(order.trader == msg.sender, "SpotRouter: not order owner");
+        _releaseEscrow(orderId, order, state);
+    }
+
+    function _releaseEscrow(
+        bytes32 orderId,
+        OrderTypes.Order memory order,
+        OrderTypes.OrderState memory state
+    ) internal {
         EscrowLock memory lock = escrowLocks[orderId];
         require(lock.baseAmount > 0 || lock.quoteAmount > 0, "SpotRouter: no escrow");
 
-        // CRITICAL: Verify order is in terminal state (cancelled or fully filled)
-        (, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
         require(state.cancelled || state.remainingQty == 0, "SpotRouter: order not terminal");
 
-        (OrderTypes.Order memory order,) = AUCTION_HOUSE.getOrder(orderId);
         (, address baseToken, address quoteToken,) = AUCTION_HOUSE.markets(order.marketId);
 
         // Release from escrow back to user

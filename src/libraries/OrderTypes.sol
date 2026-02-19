@@ -156,7 +156,7 @@ library OrderTypes {
         uint256 ratio = DFBAMath.rpow(DFBAMath.ONE_P0001, absTick, DFBAMath.WAD);
 
         if (signedTick < 0) {
-            return Math.mulDiv(DFBAMath.WAD, DFBAMath.WAD, ratio);
+            return Math.mulDiv(DFBAMath.WAD, DFBAMath.WAD, ratio, Math.Rounding.Ceil);
         }
 
         return ratio;

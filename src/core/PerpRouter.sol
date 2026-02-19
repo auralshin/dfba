@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {OrderTypes} from "../libraries/OrderTypes.sol";
 import {CoreVault} from "../core/CoreVault.sol";
 import {AuctionHouse} from "../core/AuctionHouse.sol";
@@ -250,9 +251,16 @@ contract PerpRouter is EIP712, AccessControl {
         int256 delta = side == OrderTypes.Side.Buy ? int256(uint256(fillQty)) : -int256(uint256(fillQty));
         int256 previousPosition = positions[user][marketId];
         int256 nextPosition = previousPosition + delta;
+        uint256 currentEntry = entryPrices[user][marketId];
+
+        int256 realizedPnl = _calculateRealizedPnl(previousPosition, nextPosition, currentEntry, fillPrice);
+        if (realizedPnl != 0) {
+            (, , address quoteToken,) = AUCTION_HOUSE.markets(marketId);
+            VAULT.applyPnl(user, DEFAULT_SUBACCOUNT, quoteToken, realizedPnl);
+        }
 
         positions[user][marketId] = nextPosition;
-        entryPrices[user][marketId] = _calculateEntryPrice(previousPosition, nextPosition, entryPrices[user][marketId], fillQty, fillPrice);
+        entryPrices[user][marketId] = _calculateEntryPrice(previousPosition, nextPosition, currentEntry, fillQty, fillPrice);
 
         if (nextPosition == 0) {
             entryPrices[user][marketId] = 0;
@@ -265,6 +273,50 @@ contract PerpRouter is EIP712, AccessControl {
         }
 
         emit PositionUpdated(user, marketId, nextPosition);
+    }
+
+    function _calculateRealizedPnl(
+        int256 previousPosition,
+        int256 nextPosition,
+        uint256 entryPrice,
+        uint256 fillPrice
+    ) internal pure returns (int256) {
+        if (previousPosition == 0 || entryPrice == 0) return 0;
+
+        uint256 absPrev = uint256(previousPosition > 0 ? previousPosition : -previousPosition);
+        uint256 absNext = uint256(nextPosition > 0 ? nextPosition : -nextPosition);
+
+        bool sameSign = (previousPosition > 0 && nextPosition > 0) || (previousPosition < 0 && nextPosition < 0);
+        uint256 reducedSize = 0;
+
+        if (sameSign) {
+            if (absNext >= absPrev) return 0;
+            reducedSize = absPrev - absNext;
+        } else {
+            reducedSize = absPrev;
+        }
+
+        if (reducedSize == 0) return 0;
+
+        if (previousPosition > 0) {
+            return _pnlFromPrices(entryPrice, fillPrice, reducedSize);
+        }
+
+        return _pnlFromPrices(fillPrice, entryPrice, reducedSize);
+    }
+
+    function _pnlFromPrices(
+        uint256 entryPrice,
+        uint256 exitPrice,
+        uint256 size
+    ) internal pure returns (int256) {
+        if (exitPrice >= entryPrice) {
+            uint256 gain = Math.mulDiv(size, exitPrice - entryPrice, 1e18);
+            return int256(gain);
+        }
+
+        uint256 loss = Math.mulDiv(size, entryPrice - exitPrice, 1e18);
+        return -int256(loss);
     }
 
     function _calculateEntryPrice(
@@ -323,11 +375,26 @@ contract PerpRouter is EIP712, AccessControl {
     function releaseIM(
         bytes32 orderId
     ) external onlyRole(SETTLEMENT_ROLE) {
+        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
+        _releaseIM(orderId, order, state);
+    }
+
+    function releaseIMForTrader(
+        bytes32 orderId
+    ) external {
+        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
+        require(order.trader == msg.sender, "PerpRouter: not order owner");
+        _releaseIM(orderId, order, state);
+    }
+
+    function _releaseIM(
+        bytes32 orderId,
+        OrderTypes.Order memory order,
+        OrderTypes.OrderState memory state
+    ) internal {
         IMReserve memory reserve = imReserves[orderId];
         if (reserve.amount == 0) return;
 
-        // CRITICAL: Verify order is in terminal state (cancelled or fully filled)
-        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
         require(state.cancelled || state.remainingQty == 0, "PerpRouter: order not terminal");
 
         if (state.cancelled) {
