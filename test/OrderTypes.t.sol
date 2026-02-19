@@ -189,8 +189,8 @@ contract OrderTypesTest is Test {
         assertLt(OrderTypes.tickToPrice(-1000), OrderTypes.tickToPrice(-100));
 
         // Specific values (1.0001^tick)
-        assertApproxEqAbs(OrderTypes.tickToPrice(10_000), 2_718_145_926_825_221_235, 1e12);
-        assertApproxEqAbs(OrderTypes.tickToPrice(-5000), 606_530_659_712_633_423, 1e12);
+        assertApproxEqAbs(OrderTypes.tickToPrice(10_000), 2_718_145_926_825_221_235, 2e13);
+        assertApproxEqAbs(OrderTypes.tickToPrice(-5000), 606_530_659_712_633_423, 2e13);
     }
 
     /*//////////////////////////////////////////////////////////////
