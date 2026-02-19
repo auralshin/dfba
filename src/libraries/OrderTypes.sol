@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {DFBAMath} from "./Math.sol";
 /// @title OrderTypes
 /// @notice Core types and utilities for DFBA orders (spot + perps)
 library OrderTypes {
@@ -147,11 +149,17 @@ library OrderTypes {
     function tickToPrice(
         int24 tick
     ) internal pure returns (uint256) {
-        // Simple linear approximation for now (replace with proper 1.0001^tick)
-        // price = 1e18 * (1 + tick * 0.0001) = 1e18 + tick * 1e14
-        int256 priceInt = 1e18 + (int256(tick) * 1e14);
-        require(priceInt > 0, "OrderTypes: negative price");
-        return uint256(priceInt);
+        if (tick == 0) return DFBAMath.WAD;
+
+        int256 signedTick = int256(tick);
+        uint256 absTick = uint256(signedTick < 0 ? -signedTick : signedTick);
+        uint256 ratio = DFBAMath.rpow(DFBAMath.ONE_P0001, absTick, DFBAMath.WAD);
+
+        if (signedTick < 0) {
+            return Math.mulDiv(DFBAMath.WAD, DFBAMath.WAD, ratio);
+        }
+
+        return ratio;
     }
 
     /// @notice Convert price to tick

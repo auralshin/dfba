@@ -14,6 +14,8 @@ interface ICoreVault {
 
 interface IPerpRouterPositions {
     function getPosition(address user, uint64 marketId) external view returns (int256);
+
+    function getEntryPrice(address user, uint64 marketId) external view returns (uint256);
 }
 
 interface IAuctionHouse {
@@ -275,6 +277,7 @@ contract PerpRisk {
         uint256 postBalance = balance - amount;
 
         uint256 totalMmRequired = 0;
+        int256 unrealizedPnl = 0;
         uint64 marketCount = auctionHouse.marketCount();
         for (uint64 marketId = 1; marketId <= marketCount; marketId++) {
             (OrderTypes.MarketType marketType,, address quoteToken,) = auctionHouse.markets(marketId);
@@ -286,9 +289,33 @@ contract PerpRisk {
             uint128 absSize = SafeCast.toUint128(SignedMath.abs(position));
             uint256 markPrice = _getMarkPrice(marketId);
             totalMmRequired += this.maintenanceMarginRequired(marketId, absSize, markPrice);
+
+            uint256 entryPrice = perpRouter.getEntryPrice(user, marketId);
+            if (entryPrice == 0) return false;
+
+            unrealizedPnl += _calculateUnrealizedPnl(position, entryPrice, markPrice);
         }
 
-        return postBalance >= totalMmRequired;
+        int256 equity = int256(postBalance) + unrealizedPnl;
+        if (equity <= 0) return false;
+
+        return equity >= int256(totalMmRequired);
+    }
+
+    function _calculateUnrealizedPnl(
+        int256 position,
+        uint256 entryPrice,
+        uint256 markPrice
+    ) internal pure returns (int256) {
+        uint256 absSize = uint256(position >= 0 ? position : -position);
+        uint256 entryValue = (absSize * entryPrice) / DFBAMath.WAD;
+        uint256 markValue = (absSize * markPrice) / DFBAMath.WAD;
+
+        if (position >= 0) {
+            return int256(markValue) - int256(entryValue);
+        }
+
+        return int256(entryValue) - int256(markValue);
     }
 
     function _getMarkPrice(

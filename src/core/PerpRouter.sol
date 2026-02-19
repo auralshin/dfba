@@ -8,6 +8,11 @@ import {OrderTypes} from "../libraries/OrderTypes.sol";
 import {CoreVault} from "../core/CoreVault.sol";
 import {AuctionHouse} from "../core/AuctionHouse.sol";
 import {PerpRisk} from "../perp/PerpRisk.sol";
+import {IOracleSource} from "../interfaces/IOracleSource.sol";
+
+interface IOraclePriceNoMarket {
+    function getPrice() external view returns (uint256);
+}
 
 /// @title PerpRouter
 /// @notice Router for perp orders with account-level risk checks and IM reserves
@@ -38,6 +43,9 @@ contract PerpRouter is EIP712, AccessControl {
 
     /// @notice Position tracking: user => marketId => netPosition (signed)
     mapping(address => mapping(uint64 => int256)) public positions;
+
+    /// @notice Entry price for net position (WAD): user => marketId => price
+    mapping(address => mapping(uint64 => uint256)) public entryPrices;
 
     /// @notice IM tracking per order: orderId => (user, subaccount, collateral, amount)
     mapping(bytes32 => IMReserve) public imReserves;
@@ -206,20 +214,19 @@ contract PerpRouter is EIP712, AccessControl {
         int256 currentPosition,
         address collateral
     ) internal view returns (uint256 imRequired) {
-        // Get price from tick
-        uint256 price = OrderTypes.tickToPrice(order.priceTick);
-
         // Calculate new position if order fully fills
         int256 orderDelta = order.side == OrderTypes.Side.Buy ? int256(uint256(order.qty)) : -int256(uint256(order.qty));
 
         int256 newPosition = currentPosition + orderDelta;
 
-        // IM required = IM(new position) - IM(current position)
-        // But we need worst-case, so use order price as worst execution
+        // Use trusted mark price for IM, bounded by the order limit for safety.
+        uint256 markPrice = _getMarkPrice(order.marketId);
+        uint256 orderPrice = OrderTypes.tickToPrice(order.priceTick);
+        uint256 worstPrice = markPrice > orderPrice ? markPrice : orderPrice;
 
-        // Simplified: just reserve worst-case IM for order size
+        // Simplified: reserve worst-case IM for order size
         // Production: should consider cross-margining effects
-        imRequired = RISK.initialMarginRequired(order.marketId, order.qty, price);
+        imRequired = RISK.initialMarginRequired(order.marketId, order.qty, worstPrice);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -235,13 +242,20 @@ contract PerpRouter is EIP712, AccessControl {
         address user,
         uint64 marketId,
         uint128 fillQty,
-        OrderTypes.Side side
+        OrderTypes.Side side,
+        uint256 fillPrice
     ) external onlyRole(SETTLEMENT_ROLE) {
+        require(fillPrice > 0, "PerpRouter: invalid fill price");
+
         int256 delta = side == OrderTypes.Side.Buy ? int256(uint256(fillQty)) : -int256(uint256(fillQty));
+        int256 previousPosition = positions[user][marketId];
+        int256 nextPosition = previousPosition + delta;
 
-        positions[user][marketId] += delta;
+        positions[user][marketId] = nextPosition;
+        entryPrices[user][marketId] = _calculateEntryPrice(previousPosition, nextPosition, entryPrices[user][marketId], fillQty, fillPrice);
 
-        if (positions[user][marketId] == 0) {
+        if (nextPosition == 0) {
+            entryPrices[user][marketId] = 0;
             uint256 locked = positionMargin[user][marketId];
             if (locked > 0) {
                 positionMargin[user][marketId] = 0;
@@ -250,7 +264,53 @@ contract PerpRouter is EIP712, AccessControl {
             }
         }
 
-        emit PositionUpdated(user, marketId, positions[user][marketId]);
+        emit PositionUpdated(user, marketId, nextPosition);
+    }
+
+    function _calculateEntryPrice(
+        int256 previousPosition,
+        int256 nextPosition,
+        uint256 currentEntryPrice,
+        uint128 fillQty,
+        uint256 fillPrice
+    ) internal pure returns (uint256) {
+        if (nextPosition == 0) return 0;
+
+        int256 absPrev = previousPosition >= 0 ? previousPosition : -previousPosition;
+        int256 absNext = nextPosition >= 0 ? nextPosition : -nextPosition;
+
+        if (previousPosition == 0 || (previousPosition > 0 && nextPosition > 0 && absNext > absPrev)
+            || (previousPosition < 0 && nextPosition < 0 && absNext > absPrev)) {
+            uint256 prevNotional = (uint256(absPrev) * currentEntryPrice) / 1e18;
+            uint256 addNotional = (uint256(fillQty) * fillPrice) / 1e18;
+            uint256 newNotional = prevNotional + addNotional;
+            return (newNotional * 1e18) / uint256(absNext);
+        }
+
+        if ((previousPosition > 0 && nextPosition > 0 && absNext < absPrev)
+            || (previousPosition < 0 && nextPosition < 0 && absNext < absPrev)) {
+            return currentEntryPrice;
+        }
+
+        // Position flipped; reset entry to fill price
+        return fillPrice;
+    }
+
+    function _getMarkPrice(
+        uint64 marketId
+    ) internal view returns (uint256) {
+        address oracle = AUCTION_HOUSE.marketOracles(marketId);
+        require(oracle != address(0), "PerpRouter: oracle missing");
+
+        try IOracleSource(oracle).getPrice(marketId) returns (uint256 price) {
+            return price;
+        } catch {}
+
+        try IOraclePriceNoMarket(oracle).getPrice() returns (uint256 price) {
+            return price;
+        } catch {}
+
+        revert("PerpRouter: oracle unsupported");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -293,6 +353,10 @@ contract PerpRouter is EIP712, AccessControl {
     /// @notice Get position for user in market
     function getPosition(address user, uint64 marketId) external view returns (int256) {
         return positions[user][marketId];
+    }
+
+    function getEntryPrice(address user, uint64 marketId) external view returns (uint256) {
+        return entryPrices[user][marketId];
     }
 
     /// @notice Get IM reserve for order

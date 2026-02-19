@@ -169,13 +169,13 @@ contract PerpRouterTest is Test {
         assertEq(router.getPosition(trader1, perpMarketId), 0);
 
         // Update position (as settlement contract)
-        router.updatePosition(trader1, perpMarketId, 5 * 10 ** 18, OrderTypes.Side.Buy);
+        router.updatePosition(trader1, perpMarketId, 5 * 10 ** 18, OrderTypes.Side.Buy, 50_000 * 10 ** 18);
 
         // Check position increased
         assertEq(router.getPosition(trader1, perpMarketId), int256(5 * 10 ** 18));
 
         // Sell some
-        router.updatePosition(trader1, perpMarketId, 2 * 10 ** 18, OrderTypes.Side.Sell);
+        router.updatePosition(trader1, perpMarketId, 2 * 10 ** 18, OrderTypes.Side.Sell, 50_000 * 10 ** 18);
 
         // Check position decreased
         assertEq(router.getPosition(trader1, perpMarketId), int256(3 * 10 ** 18));
@@ -184,7 +184,7 @@ contract PerpRouterTest is Test {
     function testCannotUpdatePositionUnauthorized() public {
         vm.prank(trader1);
         vm.expectRevert(); // AccessControl revert
-        router.updatePosition(trader1, perpMarketId, 1 * 10 ** 18, OrderTypes.Side.Buy);
+        router.updatePosition(trader1, perpMarketId, 1 * 10 ** 18, OrderTypes.Side.Buy, 50_000 * 10 ** 18);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -270,7 +270,7 @@ contract PerpRouterTest is Test {
         vm.stopPrank();
 
         oracle.updatePrice(50_000 * 10 ** 18);
-        router.updatePosition(trader1, perpMarketId, positionSize, OrderTypes.Side.Buy);
+        router.updatePosition(trader1, perpMarketId, positionSize, OrderTypes.Side.Buy, 50_000 * 10 ** 18);
 
         uint256 markPrice = oracle.getPrice();
         uint256 mmRequired = risk.maintenanceMarginRequired(perpMarketId, positionSize, markPrice);
@@ -290,7 +290,7 @@ contract PerpRouterTest is Test {
 
     function testReduceOnlyNoIM() public {
         // Setup position
-        router.updatePosition(trader1, perpMarketId, 10 * 10 ** 18, OrderTypes.Side.Buy);
+        router.updatePosition(trader1, perpMarketId, 10 * 10 ** 18, OrderTypes.Side.Buy, 50_000 * 10 ** 18);
 
         // Deposit minimal collateral
         vm.startPrank(trader1);
