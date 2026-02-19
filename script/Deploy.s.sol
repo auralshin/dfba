@@ -53,6 +53,10 @@ contract Deploy is Script {
         PerpRouter perpRouter = new PerpRouter(address(vault), address(auctionHouse), address(perpRisk));
         console.log("PerpRouter deployed at:", address(perpRouter));
 
+        // 6b. Wire risk module dependencies and enable MM checks
+        perpRisk.setDependencies(address(vault), address(perpRouter), address(auctionHouse));
+        vault.setRiskModule(address(perpRisk));
+
         // 7. Grant ROUTER_ROLE to routers
         auctionHouse.grantRouterRole(address(spotRouter));
         auctionHouse.grantRouterRole(address(perpRouter));

@@ -27,6 +27,9 @@ contract CoreVault {
     /// @dev Used for withdrawal checks - can't withdraw reserved IM
     mapping(address => mapping(uint256 => mapping(address => uint256))) public totalReservedPerToken;
 
+    /// @notice Locked margin backing open perp positions: user => subaccountId => token => amount
+    mapping(address => mapping(uint256 => mapping(address => uint256))) public positionMargin;
+
     /// @notice Authorized movers (routers, settlement contracts)
     mapping(address => bool) public authorized;
 
@@ -57,6 +60,10 @@ contract CoreVault {
     event EscrowReleased(uint64 indexed marketId, address indexed token, uint256 amount);
     event IMReserved(bytes32 indexed orderId, address indexed token, uint256 amount);
     event IMReleased(bytes32 indexed orderId, address indexed token, uint256 amount);
+    event PositionMarginLocked(address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount);
+    event PositionMarginReleased(
+        address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount
+    );
     event CollateralAdded(address indexed token);
     event CollateralRemoved(address indexed token);
     event AuthorizedUpdated(address indexed account, bool authorized);
@@ -187,7 +194,8 @@ contract CoreVault {
         uint256 amount
     ) external onlyAuthorized {
         require(amount > 0, "CoreVault: zero amount");
-        require(balances[from][fromSubaccount][token] >= amount, "CoreVault: insufficient balance");
+        uint256 available = getAvailableBalance(from, fromSubaccount, token);
+        require(available >= amount, "CoreVault: insufficient available balance");
 
         balances[from][fromSubaccount][token] -= amount;
         balances[to][toSubaccount][token] += amount;
@@ -267,6 +275,38 @@ contract CoreVault {
         emit IMReleased(orderId, token, amount);
     }
 
+    /// @notice Lock margin backing an open perp position (PerpRouter only)
+    /// @param user The user address
+    /// @param subaccountId The subaccount ID
+    /// @param token The collateral token
+    /// @param amount The amount to lock
+    function lockPositionMargin(
+        address user,
+        uint256 subaccountId,
+        address token,
+        uint256 amount
+    ) external onlyAuthorized {
+        require(amount > 0, "CoreVault: zero amount");
+        positionMargin[user][subaccountId][token] += amount;
+        emit PositionMarginLocked(user, subaccountId, token, amount);
+    }
+
+    /// @notice Release margin when a position is closed (PerpRouter only)
+    /// @param user The user address
+    /// @param subaccountId The subaccount ID
+    /// @param token The collateral token
+    /// @param amount The amount to release
+    function releasePositionMargin(
+        address user,
+        uint256 subaccountId,
+        address token,
+        uint256 amount
+    ) external onlyAuthorized {
+        require(positionMargin[user][subaccountId][token] >= amount, "CoreVault: insufficient position margin");
+        positionMargin[user][subaccountId][token] -= amount;
+        emit PositionMarginReleased(user, subaccountId, token, amount);
+    }
+
     /*//////////////////////////////////////////////////////////////
                              VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -283,7 +323,9 @@ contract CoreVault {
     ) public view returns (uint256 available) {
         uint256 total = balances[user][subaccountId][token];
         uint256 reserved = totalReservedPerToken[user][subaccountId][token];
-        return total > reserved ? total - reserved : 0;
+        uint256 locked = positionMargin[user][subaccountId][token];
+        uint256 totalLocked = reserved + locked;
+        return total > totalLocked ? total - totalLocked : 0;
     }
 
     /// @notice Get reserved IM for a specific order

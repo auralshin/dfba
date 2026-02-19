@@ -42,7 +42,7 @@ contract CoreVaultTest is Test {
         vault.addCollateral(address(usdc));
         vault.addCollateral(address(weth));
 
-        // Don't set risk module by default (canWithdraw not implemented yet)
+        // Leave risk module unset in this suite; dependency wiring is covered elsewhere.
         // vault.setRiskModule(address(riskModule));
 
         // Authorize router
@@ -199,7 +199,7 @@ contract CoreVaultTest is Test {
     }
 
     function testCannotMoveUnauthorized() public {
-        vm.expectRevert("CoreVault: insufficient balance");
+        vm.expectRevert("CoreVault: insufficient available balance");
         vault.move(address(usdc), alice, 0, bob, 0, 100);
     }
 
@@ -588,7 +588,7 @@ contract CoreVaultTest is Test {
         vault.deposit(DEFAULT_SUBACCOUNT, address(usdc), 100 * 10 ** 18);
 
         vm.prank(router);
-        vm.expectRevert("CoreVault: insufficient balance");
+        vm.expectRevert("CoreVault: insufficient available balance");
         vault.move(address(usdc), alice, DEFAULT_SUBACCOUNT, bob, DEFAULT_SUBACCOUNT, 200 * 10 ** 18);
     }
 

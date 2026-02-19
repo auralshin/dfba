@@ -22,7 +22,7 @@ contract PerpRouter is EIP712, AccessControl {
     bytes32 public constant SETTLEMENT_ROLE = keccak256("SETTLEMENT_ROLE");
 
     bytes32 public constant ORDER_TYPEHASH = keccak256(
-        "PerpOrder(address trader,uint64 marketId,uint8 side,uint8 flow,int24 priceTick,uint128 qty,uint128 nonce,uint64 expiry)"
+        "PerpOrder(address trader,uint64 marketId,uint8 side,uint8 flow,int24 priceTick,uint128 qty,uint128 nonce,uint64 expiry,address collateral)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -41,6 +41,9 @@ contract PerpRouter is EIP712, AccessControl {
 
     /// @notice IM tracking per order: orderId => (user, subaccount, collateral, amount)
     mapping(bytes32 => IMReserve) public imReserves;
+
+    /// @notice Margin locked for open positions: user => marketId => amount
+    mapping(address => mapping(uint64 => uint256)) public positionMargin;
 
     struct IMReserve {
         address user;
@@ -110,7 +113,8 @@ contract PerpRouter is EIP712, AccessControl {
             mstore(add(ptr, 0xc0), mload(add(order, 0xa0))) // qty
             mstore(add(ptr, 0xe0), mload(add(order, 0xc0))) // nonce
             mstore(add(ptr, 0x100), mload(add(order, 0xe0))) // expiry
-            structHash := keccak256(ptr, 0x120)
+            mstore(add(ptr, 0x120), collateral)
+            structHash := keccak256(ptr, 0x140)
         }
 
         bytes32 digest = _hashTypedDataV4(structHash);
@@ -126,8 +130,9 @@ contract PerpRouter is EIP712, AccessControl {
         address collateral
     ) internal returns (bytes32 orderId, uint64 batchId) {
         // Verify market type
-        (OrderTypes.MarketType marketType,,,) = AUCTION_HOUSE.markets(order.marketId);
+        (OrderTypes.MarketType marketType,, address quoteToken,) = AUCTION_HOUSE.markets(order.marketId);
         require(marketType == OrderTypes.MarketType.Perp, "PerpRouter: not perp market");
+        require(collateral == quoteToken, "PerpRouter: invalid collateral");
 
         // Check if order is reduce-only
         int256 currentPosition = positions[order.trader][order.marketId];
@@ -236,6 +241,15 @@ contract PerpRouter is EIP712, AccessControl {
 
         positions[user][marketId] += delta;
 
+        if (positions[user][marketId] == 0) {
+            uint256 locked = positionMargin[user][marketId];
+            if (locked > 0) {
+                positionMargin[user][marketId] = 0;
+                (, , address quoteToken,) = AUCTION_HOUSE.markets(marketId);
+                VAULT.releasePositionMargin(user, DEFAULT_SUBACCOUNT, quoteToken, locked);
+            }
+        }
+
         emit PositionUpdated(user, marketId, positions[user][marketId]);
     }
 
@@ -253,10 +267,20 @@ contract PerpRouter is EIP712, AccessControl {
         if (reserve.amount == 0) return;
 
         // CRITICAL: Verify order is in terminal state (cancelled or fully filled)
-        (, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
+        (OrderTypes.Order memory order, OrderTypes.OrderState memory state) = AUCTION_HOUSE.getOrder(orderId);
         require(state.cancelled || state.remainingQty == 0, "PerpRouter: order not terminal");
 
+        if (state.cancelled) {
+            VAULT.releaseInitialMargin(orderId, reserve.user, reserve.subaccountId, reserve.collateral);
+            delete imReserves[orderId];
+            emit IMReleased(orderId, reserve.amount);
+            return;
+        }
+
+        // Filled orders convert reserved IM into position margin until the position is closed.
         VAULT.releaseInitialMargin(orderId, reserve.user, reserve.subaccountId, reserve.collateral);
+        VAULT.lockPositionMargin(reserve.user, reserve.subaccountId, reserve.collateral, reserve.amount);
+        positionMargin[reserve.user][order.marketId] += reserve.amount;
 
         delete imReserves[orderId];
         emit IMReleased(orderId, reserve.amount);

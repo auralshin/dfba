@@ -2,9 +2,38 @@
 pragma solidity ^0.8.20;
 
 import {DFBAMath} from "../libraries/Math.sol";
+import {OrderTypes} from "../libraries/OrderTypes.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {OracleAdapter} from "./OracleAdapter.sol";
+import {IOracleSource} from "../interfaces/IOracleSource.sol";
+
+interface ICoreVault {
+    function balances(address user, uint256 subaccountId, address token) external view returns (uint256);
+}
+
+interface IPerpRouterPositions {
+    function getPosition(address user, uint64 marketId) external view returns (int256);
+}
+
+interface IAuctionHouse {
+    function marketCount() external view returns (uint64);
+
+    function markets(uint64 marketId)
+        external
+        view
+        returns (OrderTypes.MarketType marketType, address baseToken, address quoteToken, bool active);
+
+    function marketOracles(uint64 marketId) external view returns (address);
+}
+
+interface IOraclePriceNoMarket {
+    function getPrice() external view returns (uint256);
+}
+
+interface IOracleMarkPrice {
+    function getMarkPrice(uint64 marketId) external view returns (uint256);
+}
 
 /// @title PerpRisk
 /// @notice Margin calculations and liquidation checks for perp positions
@@ -38,6 +67,15 @@ contract PerpRisk {
     /// @notice Oracle adapter
     OracleAdapter public immutable ORACLE;
 
+    /// @notice Core vault reference for margin balances
+    ICoreVault public vault;
+
+    /// @notice Perp router reference for positions
+    IPerpRouterPositions public perpRouter;
+
+    /// @notice Auction house reference for markets/oracles
+    IAuctionHouse public auctionHouse;
+
     /// @notice Admin
     address public admin;
 
@@ -46,6 +84,7 @@ contract PerpRisk {
     //////////////////////////////////////////////////////////////*/
 
     event RiskParamsUpdated(uint64 indexed marketId, RiskParams params);
+    event DependenciesUpdated(address indexed vault, address indexed perpRouter, address indexed auctionHouse);
 
     /*//////////////////////////////////////////////////////////////
                                MODIFIERS
@@ -82,6 +121,18 @@ contract PerpRisk {
 
         marketRiskParams[marketId] = params;
         emit RiskParamsUpdated(marketId, params);
+    }
+
+    function setDependencies(address _vault, address _perpRouter, address _auctionHouse) external onlyAdmin {
+        require(_vault != address(0), "PerpRisk: zero vault");
+        require(_perpRouter != address(0), "PerpRisk: zero router");
+        require(_auctionHouse != address(0), "PerpRisk: zero auction house");
+
+        vault = ICoreVault(_vault);
+        perpRouter = IPerpRouterPositions(_perpRouter);
+        auctionHouse = IAuctionHouse(_auctionHouse);
+
+        emit DependenciesUpdated(_vault, _perpRouter, _auctionHouse);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -203,6 +254,62 @@ contract PerpRisk {
         }
 
         return SafeCast.toUint128(size);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          WITHDRAWAL CHECKS
+    //////////////////////////////////////////////////////////////*/
+
+    function canWithdraw(
+        address user,
+        uint256 subaccountId,
+        address token,
+        uint256 amount
+    ) external view returns (bool) {
+        require(address(vault) != address(0), "PerpRisk: vault not set");
+        require(address(perpRouter) != address(0), "PerpRisk: router not set");
+        require(address(auctionHouse) != address(0), "PerpRisk: auction not set");
+
+        uint256 balance = vault.balances(user, subaccountId, token);
+        if (amount > balance) return false;
+        uint256 postBalance = balance - amount;
+
+        uint256 totalMmRequired = 0;
+        uint64 marketCount = auctionHouse.marketCount();
+        for (uint64 marketId = 1; marketId <= marketCount; marketId++) {
+            (OrderTypes.MarketType marketType,, address quoteToken,) = auctionHouse.markets(marketId);
+            if (marketType != OrderTypes.MarketType.Perp || quoteToken != token) continue;
+
+            int256 position = perpRouter.getPosition(user, marketId);
+            if (position == 0) continue;
+
+            uint128 absSize = SafeCast.toUint128(SignedMath.abs(position));
+            uint256 markPrice = _getMarkPrice(marketId);
+            totalMmRequired += this.maintenanceMarginRequired(marketId, absSize, markPrice);
+        }
+
+        return postBalance >= totalMmRequired;
+    }
+
+    function _getMarkPrice(
+        uint64 marketId
+    ) internal view returns (uint256) {
+        address oracle = auctionHouse.marketOracles(marketId);
+        require(oracle != address(0), "PerpRisk: oracle missing");
+
+        try IOracleSource(oracle).getPrice(marketId) returns (uint256 price) {
+            return price;
+        } catch {}
+
+        try IOraclePriceNoMarket(oracle).getPrice() returns (uint256 price) {
+            return price;
+        } catch {}
+
+        try IOracleMarkPrice(oracle).getMarkPrice(marketId) returns (uint256 price) {
+            return price;
+        } catch {}
+
+        revert("PerpRisk: oracle unsupported");
     }
 
     /*//////////////////////////////////////////////////////////////

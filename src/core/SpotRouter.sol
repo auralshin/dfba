@@ -140,7 +140,7 @@ contract SpotRouter is EIP712, AccessControl {
         // Lock escrow from user's vault balance
         if (baseEscrow > 0) {
             require(
-                VAULT.balances(order.trader, DEFAULT_SUBACCOUNT, baseToken) >= baseEscrow,
+                VAULT.getAvailableBalance(order.trader, DEFAULT_SUBACCOUNT, baseToken) >= baseEscrow,
                 "SpotRouter: insufficient base"
             );
             VAULT.move(
@@ -156,7 +156,7 @@ contract SpotRouter is EIP712, AccessControl {
 
         if (quoteEscrow > 0) {
             require(
-                VAULT.balances(order.trader, DEFAULT_SUBACCOUNT, quoteToken) >= quoteEscrow,
+                VAULT.getAvailableBalance(order.trader, DEFAULT_SUBACCOUNT, quoteToken) >= quoteEscrow,
                 "SpotRouter: insufficient quote"
             );
             VAULT.move(quoteToken, order.trader, DEFAULT_SUBACCOUNT, address(this), 0, quoteEscrow);

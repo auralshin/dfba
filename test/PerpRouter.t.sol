@@ -53,6 +53,9 @@ contract PerpRouterTest is Test {
         vault.setAuthorized(address(router), true);
         vault.setAuthorized(address(auctionHouse), true);
 
+        risk.setDependencies(address(vault), address(router), address(auctionHouse));
+        vault.setRiskModule(address(risk));
+
         // Grant router ROUTER_ROLE in AuctionHouse
         bytes32 routerRole = keccak256("ROUTER_ROLE");
         auctionHouse.grantRole(routerRole, address(router));
@@ -257,6 +260,30 @@ contract PerpRouterTest is Test {
         router.releaseIM(fakeOrderId);
     }
 
+    function testWithdrawRespectsMaintenanceMargin() public {
+        uint256 depositAmount = 100_000 * 10 ** 18;
+        uint128 positionSize = 10 * 10 ** 18;
+
+        vm.startPrank(trader1);
+        collateralToken.approve(address(vault), depositAmount);
+        vault.deposit(DEFAULT_SUBACCOUNT, address(collateralToken), depositAmount);
+        vm.stopPrank();
+
+        oracle.updatePrice(50_000 * 10 ** 18);
+        router.updatePosition(trader1, perpMarketId, positionSize, OrderTypes.Side.Buy);
+
+        uint256 markPrice = oracle.getPrice();
+        uint256 mmRequired = risk.maintenanceMarginRequired(perpMarketId, positionSize, markPrice);
+        uint256 safeWithdraw = depositAmount - mmRequired;
+
+        vm.startPrank(trader1);
+        vault.withdraw(DEFAULT_SUBACCOUNT, address(collateralToken), safeWithdraw);
+
+        vm.expectRevert("CoreVault: withdrawal violates MM");
+        vault.withdraw(DEFAULT_SUBACCOUNT, address(collateralToken), 1);
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                       REDUCE-ONLY TESTS
     //////////////////////////////////////////////////////////////*/
@@ -343,7 +370,8 @@ contract PerpRouterTest is Test {
                 order.priceTick,
                 order.qty,
                 order.nonce,
-                order.expiry
+                order.expiry,
+                address(collateralToken)
             )
         );
 
@@ -402,7 +430,8 @@ contract PerpRouterTest is Test {
                 order.priceTick,
                 order.qty,
                 order.nonce,
-                order.expiry
+                order.expiry,
+                address(collateralToken)
             )
         );
 
