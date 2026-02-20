@@ -9,7 +9,7 @@ library DFBAMath {
     uint256 internal constant BPS = 10_000;
     uint256 internal constant WAD = 1e18;
     uint256 internal constant RAY = 1e27;
-    uint256 internal constant ONE_P0001 = 1_0001e14; // 1.0001 in WAD
+    uint256 internal constant ONE_P0001 = 10_001e14; // 1.0001 in WAD
 
     /// @notice Apply basis points (round down)
     function applyBps(uint256 amount, uint256 bps) internal pure returns (uint256) {

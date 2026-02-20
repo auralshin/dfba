@@ -21,12 +21,13 @@ interface IPerpRouterPositions {
 interface IAuctionHouse {
     function marketCount() external view returns (uint64);
 
-    function markets(uint64 marketId)
-        external
-        view
-        returns (OrderTypes.MarketType marketType, address baseToken, address quoteToken, bool active);
+    function markets(
+        uint64 marketId
+    ) external view returns (OrderTypes.MarketType marketType, address baseToken, address quoteToken, bool active);
 
-    function marketOracles(uint64 marketId) external view returns (address);
+    function marketOracles(
+        uint64 marketId
+    ) external view returns (address);
 }
 
 interface IOraclePriceNoMarket {
@@ -34,7 +35,9 @@ interface IOraclePriceNoMarket {
 }
 
 interface IOracleMarkPrice {
-    function getMarkPrice(uint64 marketId) external view returns (uint256);
+    function getMarkPrice(
+        uint64 marketId
+    ) external view returns (uint256);
 }
 
 /// @title PerpRisk

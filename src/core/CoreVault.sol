@@ -63,7 +63,9 @@ contract CoreVault {
     event EscrowReleased(uint64 indexed marketId, address indexed token, uint256 amount);
     event IMReserved(bytes32 indexed orderId, address indexed token, uint256 amount);
     event IMReleased(bytes32 indexed orderId, address indexed token, uint256 amount);
-    event PositionMarginLocked(address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount);
+    event PositionMarginLocked(
+        address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount
+    );
     event PositionMarginReleased(
         address indexed user, uint256 indexed subaccountId, address indexed token, uint256 amount
     );
@@ -318,12 +320,7 @@ contract CoreVault {
     /// @param subaccountId The subaccount ID
     /// @param token The collateral token
     /// @param pnl The realized PnL (positive or negative)
-    function applyPnl(
-        address user,
-        uint256 subaccountId,
-        address token,
-        int256 pnl
-    ) external onlyAuthorized {
+    function applyPnl(address user, uint256 subaccountId, address token, int256 pnl) external onlyAuthorized {
         if (pnl == 0) return;
 
         if (pnl > 0) {

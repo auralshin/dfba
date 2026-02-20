@@ -5,6 +5,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DFBAMath} from "./Math.sol";
 /// @title OrderTypes
 /// @notice Core types and utilities for DFBA orders (spot + perps)
+
 library OrderTypes {
     /// @notice Market type
     enum MarketType {

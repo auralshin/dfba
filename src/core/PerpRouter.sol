@@ -255,19 +255,20 @@ contract PerpRouter is EIP712, AccessControl {
 
         int256 realizedPnl = _calculateRealizedPnl(previousPosition, nextPosition, currentEntry, fillPrice);
         if (realizedPnl != 0) {
-            (, , address quoteToken,) = AUCTION_HOUSE.markets(marketId);
+            (,, address quoteToken,) = AUCTION_HOUSE.markets(marketId);
             VAULT.applyPnl(user, DEFAULT_SUBACCOUNT, quoteToken, realizedPnl);
         }
 
         positions[user][marketId] = nextPosition;
-        entryPrices[user][marketId] = _calculateEntryPrice(previousPosition, nextPosition, currentEntry, fillQty, fillPrice);
+        entryPrices[user][marketId] =
+            _calculateEntryPrice(previousPosition, nextPosition, currentEntry, fillQty, fillPrice);
 
         if (nextPosition == 0) {
             entryPrices[user][marketId] = 0;
             uint256 locked = positionMargin[user][marketId];
             if (locked > 0) {
                 positionMargin[user][marketId] = 0;
-                (, , address quoteToken,) = AUCTION_HOUSE.markets(marketId);
+                (,, address quoteToken,) = AUCTION_HOUSE.markets(marketId);
                 VAULT.releasePositionMargin(user, DEFAULT_SUBACCOUNT, quoteToken, locked);
             }
         }
@@ -305,11 +306,7 @@ contract PerpRouter is EIP712, AccessControl {
         return _pnlFromPrices(fillPrice, entryPrice, reducedSize);
     }
 
-    function _pnlFromPrices(
-        uint256 entryPrice,
-        uint256 exitPrice,
-        uint256 size
-    ) internal pure returns (int256) {
+    function _pnlFromPrices(uint256 entryPrice, uint256 exitPrice, uint256 size) internal pure returns (int256) {
         if (exitPrice >= entryPrice) {
             uint256 gain = Math.mulDiv(size, exitPrice - entryPrice, 1e18);
             return int256(gain);
@@ -331,16 +328,20 @@ contract PerpRouter is EIP712, AccessControl {
         int256 absPrev = previousPosition >= 0 ? previousPosition : -previousPosition;
         int256 absNext = nextPosition >= 0 ? nextPosition : -nextPosition;
 
-        if (previousPosition == 0 || (previousPosition > 0 && nextPosition > 0 && absNext > absPrev)
-            || (previousPosition < 0 && nextPosition < 0 && absNext > absPrev)) {
+        if (
+            previousPosition == 0 || (previousPosition > 0 && nextPosition > 0 && absNext > absPrev)
+                || (previousPosition < 0 && nextPosition < 0 && absNext > absPrev)
+        ) {
             uint256 prevNotional = (uint256(absPrev) * currentEntryPrice) / 1e18;
             uint256 addNotional = (uint256(fillQty) * fillPrice) / 1e18;
             uint256 newNotional = prevNotional + addNotional;
             return (newNotional * 1e18) / uint256(absNext);
         }
 
-        if ((previousPosition > 0 && nextPosition > 0 && absNext < absPrev)
-            || (previousPosition < 0 && nextPosition < 0 && absNext < absPrev)) {
+        if (
+            (previousPosition > 0 && nextPosition > 0 && absNext < absPrev)
+                || (previousPosition < 0 && nextPosition < 0 && absNext < absPrev)
+        ) {
             return currentEntryPrice;
         }
 
@@ -387,11 +388,7 @@ contract PerpRouter is EIP712, AccessControl {
         _releaseIM(orderId, order, state);
     }
 
-    function _releaseIM(
-        bytes32 orderId,
-        OrderTypes.Order memory order,
-        OrderTypes.OrderState memory state
-    ) internal {
+    function _releaseIM(bytes32 orderId, OrderTypes.Order memory order, OrderTypes.OrderState memory state) internal {
         IMReserve memory reserve = imReserves[orderId];
         if (reserve.amount == 0) return;
 
